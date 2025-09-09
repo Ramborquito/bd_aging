@@ -5,7 +5,7 @@ en enfriamiento o calentamiento.
 */
 # include "encabezados.h"
 
-# define LOG_SAMPLE
+//# define LOG_SAMPLE
 # define GRO_FLAG 0
 # define HOST 0
 
@@ -23,10 +23,6 @@ std::vector<float> log_sampling(int n) {
         x *= r;
     }
 
-    // ordenar y eliminar duplicados
-    std::sort(values.begin(), values.end());
-    values.erase(std::unique(values.begin(), values.end()), values.end());
-
     return values;
 }
 
@@ -41,7 +37,7 @@ std::vector<int> sampling_indexes(float minimal_decade, float run_time, float dt
 
     std::vector<int> sampling_indexes(total_indexes + 1);
     int sampling_counter = 0;
-    sampling_indexes[0] = 0;     // initial configuration
+    sampling_indexes[0] = 0; // initial configuration
     for (int ipow = initial_power; ipow < last_power; ++ipow) {
         float power = pow(10, ipow);
         for (int j = 0; j < samplings_per_decade; ++j) {
@@ -54,7 +50,7 @@ std::vector<int> sampling_indexes(float minimal_decade, float run_time, float dt
         }
     }
     return sampling_indexes;
-    }
+}
 
 
 int main() {
@@ -87,11 +83,11 @@ int main() {
 # endif
     parametros pars;
     char renglon[200], infile[80], gder_fn[80], energy_fn[80], msd_fn[80], snapshots_fn[80],
-        press_fn[80], fself_fn[80];
+            press_fn[80], fself_fn[80];
     char temperature_protocol[40], sample_type[40];
     FILE *fp_bitac, *fp_snaps, *fp_energ, *fp_gder, *fp_msd, *fp_in, *fp_out,
             *fp_press, *fp_data, *fp_colors, *fp_fself;
-    fp_data = fopen("wca_aging.data", "r");
+    fp_data = fopen("wca_aging_linear.data", "r");
     if (fp_data == nullptr) fp_data = stdin;
 
     printf("temp_protocol ?\n");
@@ -120,15 +116,16 @@ int main() {
         printf("trans_time, minimal_decade, run_time, nsamples (taken in run)\n");
         fgets(renglon, sizeof(renglon), fp_data);
         sscanf(renglon, "%lf  %lf %lf", &trans_time, &minimal_decade, &run_time);
+
+        printf("print decade configs?\n");
+        fgets(renglon, sizeof(renglon), fp_data);
+        sscanf(renglon, "%d  %d  %d", &print_decades_configs, &number_of_tws, &current_decade);
+        // is not correct but it works
     } else {
         printf("trans_time, run_time, nsamples (taken in run)\n");
         fgets(renglon, sizeof(renglon), fp_data);
         sscanf(renglon, "%lf %lf %d", &trans_time, &run_time, &nsamples);
     }
-
-    printf("print decade configs?\n");
-    fgets(renglon, sizeof(renglon), fp_data);
-    sscanf(renglon, "%d  %d  %d", &print_decades_configs, &number_of_tws, &current_decade);  // is not correct but it works
 
     printf("ntags: big, sml ?\n");
     fgets(renglon, sizeof(renglon), fp_data);
@@ -214,13 +211,16 @@ int main() {
     ////////////////////////////Starts loop//////////////////////////////////////////////////////////////////////
 
     for (int i_config = 1; i_config <= n_configs; ++i_config) {
-
         counter = 0;
         int energy_counter = 0;
         number_of_tw = 1;
 
         // lee datos iniciales
-        sprintf(infile, "../configs/decade%d/init_config_%d", current_decade, i_config);
+        if (strcmp(sample_type, "log") == 0)
+            sprintf(infile, "../configs/decade%d/init_config_%d", current_decade, i_config);
+        else
+            sprintf(infile, "../configs/init_config_%d", i_config);
+
         fp_in = fopen(infile, "r");
         if (fp_in == nullptr) {
             printf("Verify file path: %s", infile);
@@ -378,7 +378,7 @@ int main() {
             int nn;
             fgets(renglon, sizeof(renglon), fp_in);
             sscanf(renglon, "%d %f %f %f", &nn, &(rr.x), &(rr.y),
-                   &(rr.z));  // se debe eliminar esta parte cuando la init config sea correcta
+                   &(rr.z)); // se debe eliminar esta parte cuando la init config sea correcta
 
             if (nn != mm) {
                 printf("error: mm %d  nn %d no match\n", mm, nn);
@@ -610,7 +610,7 @@ int main() {
 
             // processing
 #ifdef LOG_SAMPLE
-            if (ni == sampling_idx[sampling_counter]){
+            if (ni == sampling_idx[sampling_counter]) {
                 should_sample = true;
                 sampling_counter++;
             }
@@ -619,7 +619,7 @@ int main() {
                 should_sample = true;
 #endif
 
-            if (should_sample){
+            if (should_sample) {
                 cudaDeviceSynchronize();
                 counter++;
 
@@ -708,7 +708,6 @@ int main() {
                         fprintf(fp_snaps,
                                 "sphere{ <%8.3f%8.3f%8.3f>, %8.3f pigment {Yellow} finish { specular 0.5 }}\n", rr.x,
                                 rr.y, rr.z, diameter * .5);
-
                 }
 
                 fprintf(fp_colors, "%f  %d  %d  %d\n", time, red_count, green_count, blue_count);
@@ -802,38 +801,38 @@ int main() {
                 virial = 0.0;
                 for (int mm = 0; mm < ngrain_big; mm++) virial += vir_big_vec[mm];
                 for (int mm = 0; mm < ngrain_sml; mm++) virial += vir_sml_vec[mm];
-                big_z = 1.0 + virial / (3.0 * xngrain_tot * pars.temp_set);    // compressibility 3D
+                big_z = 1.0 + virial / (3.0 * xngrain_tot * pars.temp_set); // compressibility 3D
                 pressure[counter - 1] += big_z;
                 time_pressure[counter - 1] = time;
 
                 // print configs for other decade
-                if((counter - 1) % points_per_decade == 1)
-                if (print_decades_configs && (number_of_tw <= number_of_tws)){
+#ifdef LOG_SAMPLE
+                if ((counter - 1) % points_per_decade == 1)
+                    if (print_decades_configs && (number_of_tw <= number_of_tws)) {
+                        sprintf(infile, "../configs/decade%d/init_config_%d", number_of_tw, i_config);
+                        fp_out = fopen(infile, "w");
 
-                    sprintf(infile, "../configs/decade%d/init_config_%d", number_of_tw, i_config);
-                    fp_out = fopen(infile, "w");
+                        fprintf(fp_out, "%f %f    phi b, s\n", phi_big, phi_sml);
+                        fprintf(fp_out, "%f    side\n", side);
+                        fprintf(fp_out, "%d %d %d    ngr b, s, tot\n", ngrain_big, ngrain_sml, ngrain_tot);
+                        fprintf(fp_out, "%f %f    sigma b, s\n", sigma_big, sigma_sml);
+                        fprintf(fp_out, "%f %f    mass b, s\n", mass_big, mass_sml);
+                        fprintf(fp_out, "\n");
 
-                    fprintf(fp_out, "%f %f    phi b, s\n", phi_big, phi_sml);
-                    fprintf(fp_out, "%f    side\n", side);
-                    fprintf(fp_out, "%d %d %d    ngr b, s, tot\n", ngrain_big, ngrain_sml, ngrain_tot);
-                    fprintf(fp_out, "%f %f    sigma b, s\n", sigma_big, sigma_sml);
-                    fprintf(fp_out, "%f %f    mass b, s\n", mass_big, mass_sml);
-                    fprintf(fp_out, "\n");
+                        for (int mm = 0; mm < ngrain_big; mm++) {
+                            rr = rr_big_vec[mm];
+                            fprintf(fp_out, "%d %f %f %f\n", mm, rr.x, rr.y, rr.z);
+                        }
+                        for (int mm = 0; mm < ngrain_sml; mm++) {
+                            rr = rr_sml_vec[mm];
+                            fprintf(fp_out, "%d %f %f %f\n", (ngrain_big + mm),
+                                    rr.x, rr.y, rr.z);
+                        }
+                        fclose(fp_out);
 
-                    for (int mm = 0; mm < ngrain_big; mm++) {
-                        rr = rr_big_vec[mm];
-                        fprintf(fp_out, "%d %f %f %f\n", mm, rr.x, rr.y, rr.z);
+                        number_of_tw++;
                     }
-                    for (int mm = 0; mm < ngrain_sml; mm++) {
-                        rr = rr_sml_vec[mm];
-                        fprintf(fp_out, "%d %f %f %f\n", (ngrain_big + mm),
-                                rr.x, rr.y, rr.z);
-                    }
-                    fclose(fp_out);
-
-                    number_of_tw++;
-                }
-
+#endif
 
                 // restart condition
                 should_sample = false;
@@ -843,7 +842,6 @@ int main() {
 
         printf("Finished step %d of %d\n", i_config, n_configs);
     }
-
 
 
     //normaliza gder
@@ -871,7 +869,6 @@ int main() {
             vol_free = volume - (4.0 / 3.0) * PI * sigma * sigma * sigma;
             gders[i][3][nb] = gders[i][3][nb] / (shell_vol);
             gders[i][3][nb] /= (xngrain_sml * (xngrain_sml - 1.0) / vol_free);
-
         }
 
     for (int i = 0; i < nsamples; ++i)
@@ -889,8 +886,11 @@ int main() {
     printf("printing files\n");
 
     for (int i = 0; i < nsamples; ++i) {
+        if (strcmp(sample_type, "log") == 0)
+            sprintf(gder_fn, "results/decade%d/gder_%d.out", current_decade, i);
+        else
+            sprintf(gder_fn, "results/gder_%d.out", i);
 
-        sprintf(gder_fn, "results/decade%d/gder_%d.out", current_decade, i);
         fp_gder = fopen(gder_fn, "w");
         if (fp_gder == nullptr) {
             printf("Verify file path: %s", gder_fn);
@@ -902,12 +902,15 @@ int main() {
             dist = (0.5 + (float) nb) * bin_size_gder;
             fprintf(fp_gder, "%f  %f  %f  %f  %f\n", dist, gders[i][0][nb], gders[i][1][nb],
                     gders[i][2][nb], gders[i][3][nb]);
-
         }
         fclose(fp_gder);
     }
 
-    sprintf(energy_fn, "results/decade%d/energies_averaged.out", current_decade);
+    if (strcmp(sample_type, "log") == 0)
+        sprintf(energy_fn, "results/decade%d/energies_averaged.out", current_decade);
+    else
+        sprintf(energy_fn, "results/energies_averaged.out");
+
     fp_energ = fopen(energy_fn, "w");
     if (fp_energ == nullptr) {
         printf("Verify file path: %s", energy_fn);
@@ -924,7 +927,11 @@ int main() {
     for (int i = 0; i < nsamples; ++i)
         fself_big[i] /= n_configs;
 
-    sprintf(fself_fn, "results/decade%d/fself.out", current_decade);
+    if (strcmp(sample_type, "log") == 0)
+        sprintf(fself_fn, "results/decade%d/fself.out", current_decade);
+    else
+        sprintf(fself_fn, "results/fself.out");
+
     fp_fself = fopen(fself_fn, "w");
     if (fp_fself == nullptr) {
         printf("Verify file path: %s", fself_fn);
@@ -936,7 +943,11 @@ int main() {
 
     fclose(fp_fself);
 
-    sprintf(msd_fn, "results/decade%d/msd_averaged.out", current_decade);
+    if (strcmp(sample_type, "log") == 0)
+        sprintf(msd_fn, "results/decade%d/msd_averaged.out", current_decade);
+    else
+        sprintf(msd_fn, "results/msd_averaged.out");
+
     fp_msd = fopen(msd_fn, "w");
     if (fp_msd == nullptr) {
         printf("Verify file path: %s", msd_fn);
@@ -950,7 +961,11 @@ int main() {
     fclose(fp_msd);
 
     // pressure
-    sprintf(press_fn, "results/decade%d/pressure.out", current_decade);
+    if (strcmp(sample_type, "log") == 0)
+        sprintf(press_fn, "results/decade%d/pressure.out", current_decade);
+    else
+        sprintf(press_fn, "results/pressure.out");
+
     fp_press = fopen(press_fn, "w");
     if (fp_press == nullptr) {
         printf("Verify file path: %s", press_fn);
