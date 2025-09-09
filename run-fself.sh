@@ -4,10 +4,10 @@
 
 #set_init_config values
 
-ngrain_total=32768
-phi_big=0.40
-phi_sml=0.10
-size_big=5.0
+ngrain_total=2048
+phi_big=0.20
+phi_sml=0.00
+size_big=1.0
 
 #eliminateOverlap values
 kappa=500000
@@ -26,25 +26,26 @@ tags=8
 #Temperature values
 type="linear"
 temp0=1.0
-tempf=0.1
+tempf=0.25
 t0=0.0
-tf=0.05
+tf=0.0
 ngap_rescaling=1
 
 #simulation parameters
 sampling="log"      # sampling type: linear or log
 dt_aging=1.0e-4
 transtime_aging=0.1
-runtime_aging=0.1
+runtime_aging=1.0e1
 initial_decade=1.0e-3   # only for log sampling
+number_initial_decades=3
 samples_aging=10
 
-#g(r) and F(r)
+
+#g(r) and f_self(r)
 
 gr_nbins=400
 gr_range=15.0
-force_nbins=400
-force_range=15.0
+qmax=6.19
 
 #Crea carpeta para el sistema particular
 
@@ -61,7 +62,7 @@ if [ -d "$directorio" ]; then
 fi
 
 mkdir $directorio
-cp run-system.sh $directorio/
+cp run-fself.sh $directorio/
 cd $directorio
 
 
@@ -70,6 +71,14 @@ cd $directorio
 echo "Creating files"
 mkdir configs
 mkdir -p simulation/results
+
+for((i=0; i<=number_initial_decades;i++)); do
+  mkdir -p "configs/decade$i"
+done
+
+for((i=0; i<=number_initial_decades;i++)); do
+  mkdir -p "simulation/results/decade$i"
+done
 
 #copy files to configs
 cp ../set_init_config.bin configs/
@@ -111,40 +120,7 @@ cd configs
 cd ..
 
 #copy files to simulation
-cp ../bd_aging.bin simulation/
-
-cd simulation
-
-{
-  echo "$type"
-
-  if [ "$type" = "linear" ]; then
-    echo "$temp0  $tempf  $t0  $tf  $ngap_rescaling"
-  elif [ "$type" = "sine" ]; then
-    exit 3 # not implemented yet
-  fi
-
-  echo "$dt_aging"
-  echo "$sampling"
-
-  if [ "$sampling" = "linear" ]; then
-      echo "$transtime_aging  $runtime_aging  $samples_aging"
-    elif [ "$sampling" = "log" ]; then
-      echo "$transtime_aging  $initial_decade  $runtime_aging"
-    else
-      echo "sampling option not implemented"
-      exit 3 # not implemented yet
-  fi
-
-  echo "$tagb  $tags"
-  echo "../configs/" #not used in program
-  echo "$number_configs"
-  echo "$gr_nbins  $gr_range"
-  echo "$force_nbins  $force_range"
-  echo "$RANDOM"
-} > bd_aging.data
-
-cd ..
+cp ../bd_aging_self.bin simulation/
 
 ###########Init configs############
 
@@ -152,14 +128,16 @@ cd configs
 
 #creating init_config
 echo "Creating initial config"
-./set_init_config.bin < set_init_config.data >> bitacora_set.log
-./eliminate_overlap.bin < eliminate_overlap.data >> bitacora_overlap.log
+./set_init_config.bin < set_init_config.data #> bitacora_set.log
+./eliminate_overlap.bin < eliminate_overlap.data #> bitacora_overlap.log
 rm init_config_overlaped
 rm rcp*
 
 #creating all starting configs
 echo "Creating all configs"
-./bd_aging_configs.bin < bd_aging_configs.data >> bitacora_configs.log
+./bd_aging_configs.bin < bd_aging_configs.data #> bitacora_configs.log
+
+mv init_config_* decade0
 
 cd ..
 
@@ -168,12 +146,54 @@ echo "Starting simulation"
 
 cd simulation
 
-#run simulation
-./bd_aging.bin < bd_aging.data > bitacora_runs.log
+for(( i=0; i<=number_initial_decades; i++ )); do
 
-if [ $? -ne 0 ]; then
+  if [ $i -eq 0 ]; then
+    print_decades_flag=1
+  else
+    print_decades_flag=0
+  fi
+  
+  current_decade=$i
+
+  {
+    echo "$type"
+
+    if [ "$type" = "linear" ]; then
+      echo "$temp0  $tempf  $t0  $tf  $ngap_rescaling"
+    elif [ "$type" = "sine" ]; then
+      exit 3 # not implemented yet
+    fi
+
+    echo "$dt_aging"
+    echo "$sampling"
+
+    if [ "$sampling" = "linear" ]; then
+        echo "$transtime_aging  $runtime_aging  $samples_aging"
+      elif [ "$sampling" = "log" ]; then
+        echo "$transtime_aging  $initial_decade  $runtime_aging"
+      else
+        echo "sampling option not implemented"
+        exit 3 # not implemented yet
+    fi
+
+    echo "$print_decades_flag  $number_initial_decades  $current_decade"
+    echo "$tagb  $tags"
+    echo "$number_configs"
+    echo "$gr_nbins  $gr_range"
+    echo "$qmax"
+    echo "$RANDOM"
+  } > bd_aging_self.data
+
+
+  #run simulation
+  ./bd_aging_self.bin < bd_aging_self.data #> bitacora_runs.log
+
+  if [ $? -ne 0 ]; then
   echo "Error in simulation"
   exit 4
-fi
+  fi
+
+done
 
 echo "Simulation finished successfully"

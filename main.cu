@@ -4,43 +4,93 @@ para estudiar las fuerzas efectivas bajo el esquema de contraccion de fuerzas en
 en enfriamiento o calentamiento.
 */
 # include "encabezados.h"
-# include "Contracting_Vector3D.cuh"
 
+# define LOG_SAMPLE
 # define GRO_FLAG 0
 # define HOST 0
 
 //===================================== 2025-03-11 ===================================
+
+std::vector<float> log_sampling(int n) {
+    std::vector<float> values;
+    values.reserve(n + 1);
+
+    float r = std::pow(10.0f, 1.0f / n); // raíz n-ésima de 10
+    float x = 1.0f;
+
+    for (int i = 0; i <= n; ++i) {
+        values.push_back(x);
+        x *= r;
+    }
+
+    // ordenar y eliminar duplicados
+    std::sort(values.begin(), values.end());
+    values.erase(std::unique(values.begin(), values.end()), values.end());
+
+    return values;
+}
+
+std::vector<int> sampling_indexes(float minimal_decade, float run_time, float dt, int samplings_per_decade) {
+    int last_power = static_cast<int>(round(log10(run_time)));
+    int initial_power = static_cast<int>(round(log10(minimal_decade)));
+    const int decades = last_power - initial_power;
+
+    auto values_per_scale = log_sampling(samplings_per_decade);
+
+    int total_indexes = decades * samplings_per_decade;
+
+    std::vector<int> sampling_indexes(total_indexes + 1);
+    int sampling_counter = 0;
+    sampling_indexes[0] = 0;     // initial configuration
+    for (int ipow = initial_power; ipow < last_power; ++ipow) {
+        float power = pow(10, ipow);
+        for (int j = 0; j < samplings_per_decade; ++j) {
+            float scaled_time;
+            int index;
+            scaled_time = values_per_scale[j] * power;
+            index = (int) round(scaled_time / dt);
+            sampling_counter++;
+            sampling_indexes[sampling_counter] = index;
+        }
+    }
+    return sampling_indexes;
+    }
 
 
 int main() {
     float3 *rr_big_vec, *rr_big_raw_vec, *rr_big_ini_vec, *ff_big_vec,
             *rr_sml_vec, *rr_sml_raw_vec, *rr_sml_ini_vec, *ff_sml_vec;
     float3 rr, drr, zero;
-    float *vir_big_vec, *vir_sml_vec, *pot_big_vec, *pot_sml_vec, *force_ls_vec;
+    float *vir_big_vec, *vir_sml_vec, *pot_big_vec, *pot_sml_vec;
     float *gder_bb_vec, *gder_bs_vec, *gder_sb_vec, *gder_ss_vec;
     int *nocup_big_vec, *cell_big_vec, *nocup_sml_vec, *cell_sml_vec;
     double run_time, trans_time, dt;
-    float side, cutoff, bin_size_gder, bin_size_dplt,
+    float side, cutoff, bin_size_gder, qmax,
             shell_vol, vol_free, msd_big,
             msd_sml, dist, aux, sigma, sigma_big, sigma_sml, mass_big, mass_sml,
-            range_dplt, range_gder, xngrain_big, xngrain_sml, xngrain_tot, big_z,
+            range_gder, xngrain_big, xngrain_sml, xngrain_tot, big_z,
             virial, ene_pot_big, ene_pot_sml, xnb, T0, Tf, t0, tf, time, period,
-            cell_side_big, phi_big, phi_sml, cell_side_sml, volume, diameter;
+            cell_side_big, phi_big, phi_sml, cell_side_sml, volume;
     float ***gders, *energy_ub, *energy_us, *energy_temp, *msd_b, *msd_s,
             *time_energy, *time_msd;
     int ngrain_tot, ngrain_big, ngrain_sml, ni, niter, ntrans, ngap, idum,
             nsamples, ncell_big, ncell_sml, ncell_big3, ncell_sml3, ntot_big,
-            ntot_sml, ii, jj, nbins_dplt, nbins_gder, nsearch_big, ntags_big,
-            ntags_sml, nocup, nocup_big_max, nocup_sml_max, counter, n_rescalings_per_gap, ngap_rescaling, n_configs;
+            ntot_sml, ii, jj, nbins_gder, ntags_big,
+            ntags_sml, nocup, nocup_big_max, nocup_sml_max, counter, ngap_rescaling, n_configs;
     int NH, NB_BIG, NB_SML;
+    double minimal_decade;
+    bool should_sample, print_decades_configs;
+    int number_of_tws, number_of_tw, current_decade;
+
 # if !HOST
     int NB_CELL_BIG3, NB_CELL_SML3, NB_NTOT_BIG, NB_NTOT_SML;
 # endif
     parametros pars;
-    char renglon[200], infile[80], force_fn[80], gder_fn[80], energy_fn[80], msd_fn[80], snapshots_fn[80];
-    char temperature_protocol[40];
-    FILE *fp_bitac, *fp_snaps, *fp_energ, *fp_force, *fp_gder, *fp_msd, *fp_in, *fp_out,
-            *fp_press, *fp_data, *fp_colors;
+    char renglon[200], infile[80], gder_fn[80], energy_fn[80], msd_fn[80], snapshots_fn[80],
+        press_fn[80], fself_fn[80];
+    char temperature_protocol[40], sample_type[40];
+    FILE *fp_bitac, *fp_snaps, *fp_energ, *fp_gder, *fp_msd, *fp_in, *fp_out,
+            *fp_press, *fp_data, *fp_colors, *fp_fself;
     fp_data = fopen("wca_aging.data", "r");
     if (fp_data == nullptr) fp_data = stdin;
 
@@ -61,17 +111,28 @@ int main() {
     fgets(renglon, sizeof(renglon), fp_data);
     sscanf(renglon, "%lf", &dt);
 
-    printf("trans_time, run_time, nsamples (taken in run)\n");
+    printf("sample type (linear, log) ?\n");
     fgets(renglon, sizeof(renglon), fp_data);
-    sscanf(renglon, "%lf %lf %d", &trans_time, &run_time, &nsamples);
+    sscanf(renglon, "%s", sample_type);
+
+    if (strcmp(sample_type, "log") == 0) {
+        printf("log sampling selected. Must be added in compilation as -DLOG_SAMPLE\n");
+        printf("trans_time, minimal_decade, run_time, nsamples (taken in run)\n");
+        fgets(renglon, sizeof(renglon), fp_data);
+        sscanf(renglon, "%lf  %lf %lf", &trans_time, &minimal_decade, &run_time);
+    } else {
+        printf("trans_time, run_time, nsamples (taken in run)\n");
+        fgets(renglon, sizeof(renglon), fp_data);
+        sscanf(renglon, "%lf %lf %d", &trans_time, &run_time, &nsamples);
+    }
+
+    printf("print decade configs?\n");
+    fgets(renglon, sizeof(renglon), fp_data);
+    sscanf(renglon, "%d  %d  %d", &print_decades_configs, &number_of_tws, &current_decade);  // is not correct but it works
 
     printf("ntags: big, sml ?\n");
     fgets(renglon, sizeof(renglon), fp_data);
     sscanf(renglon, "%d %d", &ntags_big, &ntags_sml);
-
-    printf("first infile ?\n");
-    fgets(renglon, sizeof(renglon), fp_data);
-    sscanf(renglon, "%s", infile);
 
     printf("n_configs ?\n");
     fgets(renglon, sizeof(renglon), fp_data);
@@ -81,9 +142,9 @@ int main() {
     fgets(renglon, sizeof(renglon), fp_data);
     sscanf(renglon, "%d %f", &nbins_gder, &range_gder);
 
-    printf("nbins_dplt, range_dplt ?\n");
+    printf("qmax ?\n");
     fgets(renglon, sizeof(renglon), fp_data);
-    sscanf(renglon, "%d %f", &nbins_dplt, &range_dplt);
+    sscanf(renglon, "%f", &qmax);
 
     printf("idum ?\n");
     fgets(renglon, sizeof(renglon), fp_data);
@@ -97,32 +158,29 @@ int main() {
     pars.dt = dt;
     pars.temp_set = T0;
     pars.nbins_gder = nbins_gder;
-    pars.nbins_dplt = nbins_dplt;
     pars.range_gder = range_gder;
-    pars.range_dplt = range_dplt;
     pars.ntags_big = ntags_big;
     pars.ntags_sml = ntags_sml;
 
     bin_size_gder = range_gder / ((float) nbins_gder);
-    bin_size_dplt = range_dplt / ((float) nbins_dplt);
     pars.bin_size_gder = bin_size_gder;
-    pars.bin_size_dplt = bin_size_dplt;
 
     zero.x = zero.y = zero.z = 0.0;
+
+
+    // create a set of idexes for logarithmic sample
+#ifdef LOG_SAMPLE
+    int points_per_decade = 10;
+    auto sampling_idx = sampling_indexes(minimal_decade, run_time, dt, points_per_decade);
+    nsamples = (int) sampling_idx.size();
+#endif
+
 
     //Initialize memory to accumulate results
 
     //Values to calculate size of arrays
     niter = (int) (run_time / dt);
     ngap = niter / nsamples;
-    n_rescalings_per_gap = ngap / ngap_rescaling;
-
-    //effective force
-
-    auto **forces = new Contracting_Vector3D *[nsamples];
-    for (int i = 0; i < nsamples; ++i)
-        forces[i] = new Contracting_Vector3D(nbins_dplt, range_dplt);
-
 
     //g_ij(r) bidisperse
     gders = (float ***) malloc(nsamples * sizeof(float **));
@@ -134,15 +192,14 @@ int main() {
         }
     }
 
+    //fself
+    auto *fself_big = (float *) calloc(nsamples, sizeof(float));
+
     //energy and msd and pressure
-    int n_data_energy = nsamples * n_rescalings_per_gap;
-
-    if (trans_time > 0.0f) n_data_energy *= 1 + (int)round(trans_time / run_time);
-
-    time_energy = (float *) malloc(n_data_energy * sizeof(float));
-    energy_ub = (float *) calloc(n_data_energy, sizeof(float));
-    energy_us = (float *) calloc(n_data_energy, sizeof(float));
-    energy_temp = (float *) calloc(n_data_energy, sizeof(float));
+    time_energy = (float *) malloc(nsamples * sizeof(float));
+    energy_ub = (float *) calloc(nsamples, sizeof(float));
+    energy_us = (float *) calloc(nsamples, sizeof(float));
+    energy_temp = (float *) calloc(nsamples, sizeof(float));
 
     time_msd = (float *) malloc(nsamples * sizeof(float));
     msd_b = (float *) calloc(nsamples, sizeof(float));
@@ -160,12 +217,13 @@ int main() {
 
         counter = 0;
         int energy_counter = 0;
+        number_of_tw = 1;
 
         // lee datos iniciales
-        sprintf(infile, "../configs/init_config_%d", i_config);
+        sprintf(infile, "../configs/decade%d/init_config_%d", current_decade, i_config);
         fp_in = fopen(infile, "r");
         if (fp_in == nullptr) {
-            printf("Verify file path");
+            printf("Verify file path: %s", infile);
             fflush(stdout);
             exit(-2);
         }
@@ -205,8 +263,6 @@ int main() {
             cell_side_big = side / ((float) ncell_big);
             pars.ncell_big = ncell_big;
             pars.cell_side_big = cell_side_big;
-            nsearch_big = (long) (range_dplt / cell_side_big + 1.0);
-            pars.nsearch_big = nsearch_big;
 
             cutoff = sigma_sml;
             ncell_sml = (int) (side / (1.05 * cutoff));
@@ -243,7 +299,6 @@ int main() {
 
             // memory allocation
 #if !HOST
-            cudaMallocManaged(&force_ls_vec, nbins_dplt * sizeof(float));
 
             cudaMallocManaged(&rr_big_vec, ngrain_big * sizeof(float3));
             cudaMallocManaged(&rr_big_raw_vec, ngrain_big * sizeof(float3));
@@ -322,7 +377,8 @@ int main() {
         for (int mm = 0; mm < ngrain_tot; mm++) {
             int nn;
             fgets(renglon, sizeof(renglon), fp_in);
-            sscanf(renglon, "%d %f %f %f", &nn, &(rr.x), &(rr.y), &(rr.z));  // se debe eliminar esta parte cuando la init config sea correcta
+            sscanf(renglon, "%d %f %f %f", &nn, &(rr.x), &(rr.y),
+                   &(rr.z));  // se debe eliminar esta parte cuando la init config sea correcta
 
             if (nn != mm) {
                 printf("error: mm %d  nn %d no match\n", mm, nn);
@@ -421,8 +477,8 @@ int main() {
 #else
         curandState *devStates_big;
         curandState *devStates_sml;
-        cudaMalloc(&devStates_big, NB_BIG * sizeof(curandState));
-        cudaMalloc(&devStates_sml, NB_SML * sizeof(curandState));
+        cudaMalloc(&devStates_big, (size_t) ngrain_big * sizeof(curandState));
+        cudaMalloc(&devStates_sml, (size_t) ngrain_sml * sizeof(curandState));
 
         setup_rng_kernel<<<NB_BIG, NH>>>(devStates_big, idum, ngrain_big);
         setup_rng_kernel<<<NB_SML, NH>>>(devStates_sml, idum + 1, ngrain_sml);
@@ -431,7 +487,9 @@ int main() {
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         ///////////////////////////////////////////////////// run ///////////////////////////////////////////////////////////////////////////////////
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+#ifdef LOG_SAMPLE
+        int sampling_counter = 0;
+#endif
 
         for (ni = -ntrans; ni < niter; ni++) {
             cudaDeviceSynchronize();
@@ -528,28 +586,6 @@ int main() {
             cudaDeviceSynchronize();
 # endif
 
-            // evaluate energies (0.5 because double count)
-            if (ni % ngap_rescaling == 0) {
-
-                ene_pot_big = ene_pot_sml = 0.0;
-                for (int mm = 0; mm < ngrain_big; mm++) ene_pot_big += 0.5 * pot_big_vec[mm];
-                ene_pot_big /= xngrain_big;
-                for (int mm = 0; mm < ngrain_sml; mm++) ene_pot_sml += 0.5 * pot_sml_vec[mm];
-                ene_pot_sml /= xngrain_sml;
-
-                if (energy_counter >= n_data_energy) {
-                    printf("energy_counter %d out of limits. n_data_energy %d\n", energy_counter, n_data_energy);
-                    exit(1);
-                }
-
-                energy_us[energy_counter] += ene_pot_sml;
-                energy_ub[energy_counter] += ene_pot_big;
-                time_energy[energy_counter] = time;
-                energy_temp[energy_counter] = pars.temp_set;
-
-                energy_counter++;
-            }
-
             // processing
 
             if (ni < 0 && ni % ngap == 0) {
@@ -573,10 +609,35 @@ int main() {
             }
 
             // processing
+#ifdef LOG_SAMPLE
+            if (ni == sampling_idx[sampling_counter]){
+                should_sample = true;
+                sampling_counter++;
+            }
+#else
+            if (ni >= 0 && ni % ngap == 0)
+                should_sample = true;
+#endif
 
-            if (ni >= 0 && ni % ngap == 0) {
+            if (should_sample){
                 cudaDeviceSynchronize();
                 counter++;
+
+                // energy sampling
+                ene_pot_big = ene_pot_sml = 0.0;
+                for (int mm = 0; mm < ngrain_big; mm++) ene_pot_big += 0.5 * pot_big_vec[mm];
+                ene_pot_big /= xngrain_big;
+                for (int mm = 0; mm < ngrain_sml; mm++) ene_pot_sml += 0.5 * pot_sml_vec[mm];
+                ene_pot_sml /= xngrain_sml;
+
+                energy_us[energy_counter] += ene_pot_sml;
+                energy_ub[energy_counter] += ene_pot_big;
+                time_energy[energy_counter] = time;
+                energy_temp[energy_counter] = pars.temp_set;
+
+                energy_counter++;
+
+                // occupation
 
                 nocup_big_max = nocup_sml_max = 0;
                 for (ii = 0; ii < ncell_big3; ii++) {
@@ -654,13 +715,6 @@ int main() {
                 fclose(fp_snaps);
 # endif
 
-                // calculate effective force
-
-                cudaDeviceSynchronize();
-                forces[counter - 1]->add_statistics(rr_big_vec, ff_big_vec, ngrain_big, side);
-
-
-
                 //get statistics for gder
 
                 for (int nb = 0; nb < NB_BIG * nbins_gder; nb++) gder_bb_vec[nb] = 0.0f;
@@ -714,6 +768,10 @@ int main() {
                     gders[counter - 1][3][nb] += gder_ss_vec[nb];
                 }
 
+                // calculate fself
+
+                fself_isotropic(rr_big_raw_vec, rr_big_ini_vec, ngrain_big, fself_big, counter, qmax);
+
                 // calculate MSD
 
                 msd_big = 0.0;
@@ -748,6 +806,37 @@ int main() {
                 pressure[counter - 1] += big_z;
                 time_pressure[counter - 1] = time;
 
+                // print configs for other decade
+                if((counter - 1) % points_per_decade == 1)
+                if (print_decades_configs && (number_of_tw <= number_of_tws)){
+
+                    sprintf(infile, "../configs/decade%d/init_config_%d", number_of_tw, i_config);
+                    fp_out = fopen(infile, "w");
+
+                    fprintf(fp_out, "%f %f    phi b, s\n", phi_big, phi_sml);
+                    fprintf(fp_out, "%f    side\n", side);
+                    fprintf(fp_out, "%d %d %d    ngr b, s, tot\n", ngrain_big, ngrain_sml, ngrain_tot);
+                    fprintf(fp_out, "%f %f    sigma b, s\n", sigma_big, sigma_sml);
+                    fprintf(fp_out, "%f %f    mass b, s\n", mass_big, mass_sml);
+                    fprintf(fp_out, "\n");
+
+                    for (int mm = 0; mm < ngrain_big; mm++) {
+                        rr = rr_big_vec[mm];
+                        fprintf(fp_out, "%d %f %f %f\n", mm, rr.x, rr.y, rr.z);
+                    }
+                    for (int mm = 0; mm < ngrain_sml; mm++) {
+                        rr = rr_sml_vec[mm];
+                        fprintf(fp_out, "%d %f %f %f\n", (ngrain_big + mm),
+                                rr.x, rr.y, rr.z);
+                    }
+                    fclose(fp_out);
+
+                    number_of_tw++;
+                }
+
+
+                // restart condition
+                should_sample = false;
             }
         }
         cudaDeviceSynchronize();
@@ -755,12 +844,6 @@ int main() {
         printf("Finished step %d of %d\n", i_config, n_configs);
     }
 
-
-    // calculate effective force
-    auto *force = (float *) malloc(nbins_dplt * sizeof(float));
-
-    for (int i = 0; i < nsamples; ++i)
-        forces[i]->calculate_vector();
 
 
     //normaliza gder
@@ -796,7 +879,7 @@ int main() {
             for (int nb = 0; nb < nbins_gder; ++nb)
                 gders[i][j][nb] /= n_configs;
 
-    for (int i = 0; i < n_data_energy; ++i) {
+    for (int i = 0; i < nsamples; ++i) {
         energy_ub[i] /= n_configs;
         energy_us[i] /= n_configs;
     }
@@ -804,29 +887,16 @@ int main() {
 
     //imprime resultados en files
     printf("printing files\n");
+
     for (int i = 0; i < nsamples; ++i) {
 
-
-        forces[i]->get_vector(force);
-
-        sprintf(force_fn, "results/forces_%d.out", i);
-        fp_force = fopen(force_fn, "w");
-        if (fp_force == nullptr) {
-            printf("Verify file path");
+        sprintf(gder_fn, "results/decade%d/gder_%d.out", current_decade, i);
+        fp_gder = fopen(gder_fn, "w");
+        if (fp_gder == nullptr) {
+            printf("Verify file path: %s", gder_fn);
+            fflush(stdout);
             exit(-2);
         }
-
-        for (int nb = 0; nb < nbins_dplt; nb++) {
-            dist = (0.5 + (float) nb) * bin_size_dplt;
-            fprintf(fp_force, "%f  %f\n", dist, force[nb]);
-        }
-        fclose(fp_force);
-    }
-
-    for (int i = 0; i < nsamples; ++i) {
-
-        sprintf(gder_fn, "results/gder_%d.out", i);
-        fp_gder = fopen(gder_fn, "w");
 
         for (int nb = 0; nb < nbins_gder; nb++) {
             dist = (0.5 + (float) nb) * bin_size_gder;
@@ -837,17 +907,42 @@ int main() {
         fclose(fp_gder);
     }
 
-    sprintf(energy_fn, "results/energies_averaged.out");
+    sprintf(energy_fn, "results/decade%d/energies_averaged.out", current_decade);
     fp_energ = fopen(energy_fn, "w");
+    if (fp_energ == nullptr) {
+        printf("Verify file path: %s", energy_fn);
+        fflush(stdout);
+        exit(-2);
+    }
 
-    for (int i = 0; i < n_data_energy; ++i) {
+    for (int i = 0; i < nsamples; ++i) {
         fprintf(fp_energ, "%f  %f  %f  %f\n", time_energy[i], energy_ub[i],
                 energy_us[i], energy_temp[i]);
     }
     fclose(fp_energ);
 
-    sprintf(msd_fn, "results/msd_averaged.out");
+    for (int i = 0; i < nsamples; ++i)
+        fself_big[i] /= n_configs;
+
+    sprintf(fself_fn, "results/decade%d/fself.out", current_decade);
+    fp_fself = fopen(fself_fn, "w");
+    if (fp_fself == nullptr) {
+        printf("Verify file path: %s", fself_fn);
+        fflush(stdout);
+        exit(-2);
+    }
+    for (int i = 0; i < nsamples; ++i)
+        fprintf(fp_fself, "%f  %f\n", time_msd[i], fself_big[i]);
+
+    fclose(fp_fself);
+
+    sprintf(msd_fn, "results/decade%d/msd_averaged.out", current_decade);
     fp_msd = fopen(msd_fn, "w");
+    if (fp_msd == nullptr) {
+        printf("Verify file path: %s", msd_fn);
+        fflush(stdout);
+        exit(-2);
+    }
 
     for (int i = 0; i < nsamples; ++i) {
         fprintf(fp_msd, "%f  %f  %f\n", time_msd[i], msd_b[i], msd_s[i]);
@@ -855,8 +950,13 @@ int main() {
     fclose(fp_msd);
 
     // pressure
-
-    fp_press = fopen("results/pressure.out", "w");
+    sprintf(press_fn, "results/decade%d/pressure.out", current_decade);
+    fp_press = fopen(press_fn, "w");
+    if (fp_press == nullptr) {
+        printf("Verify file path: %s", press_fn);
+        fflush(stdout);
+        exit(-2);
+    }
 
     for (int i = 0; i < nsamples; ++i) {
         pressure[i] /= n_configs;
@@ -872,8 +972,6 @@ int main() {
 #endif
 
     fclose(fp_bitac);
-
-    cudaFree(force_ls_vec);
 
     cudaFree(rr_big_vec);
     cudaFree(rr_big_raw_vec);
@@ -902,17 +1000,12 @@ int main() {
 
 
     for (int i = 0; i < nsamples; ++i) {
-        delete forces[i];
-    }
-    delete[] forces;
-    free(force);
-
-
-    for (int i = 0; i < nsamples; ++i) {
         for (int j = 0; j < 4; ++j) free(gders[i][j]);
         free(gders[i]);
     }
     free(gders);
+
+    free(fself_big);
 
     free(energy_us);
     free(energy_ub);
@@ -922,7 +1015,6 @@ int main() {
     free(energy_temp);
     free(time_energy);
     free(time_msd);
-
 
 
     printf("TERMINADO\n");

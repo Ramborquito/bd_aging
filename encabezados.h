@@ -2,6 +2,7 @@
 # include <stdlib.h>
 # include <stdio.h>
 # include <math.h>
+# include <vector>
 
 # include <gsl/gsl_blas.h>
 # include <gsl/gsl_vector.h>
@@ -100,6 +101,8 @@ void potential_wca49_50_AO_hst(float sigma, float dist_inv, float invT,float AA,
 
 void potential_wca_hst(float sigma, float dist_inv, float &potential, float &normal_force);
 
+void potential_wca_modified_hst(float sigma, float dist_inv, float &potential, float &normal_force);
+
 void set_temp(float3 *, float3 *, float [], parametros);
 
 float calculate_temp_linear(float T0, float Tf, float t0, float tf, float t);
@@ -116,6 +119,8 @@ calculate_color(int mm, float3 *rr_big_vec, float3 *rr_sml_vec, char *color, int
 void update_ermak_hst(char type, float3 *rr_vec, float3 *rr_raw_vec,
                       float3 *ff_vec, gsl_rng *rand, parametros pars);
 
+void fself_isotropic(float3 *rr_raw, float3 *rr0, int ngrain, float *fself, int sample_number, float qmax);
+
 // ===================================================================================
 
 __device__ void potential_wca49_50_dev(float sigma, float dist_inv, float invT,float AA,
@@ -125,6 +130,8 @@ __device__ void potential_wca49_50_AO_dev(float sigma, float dist_inv, float inv
                                           float &potential, float &normal_force);
 
 __device__ void potential_wca_dev(float sigma, float dist_inv, float &potential, float &normal_force);
+
+__device__ void potential_wca_modified_dev(float sigma, float dist_inv, float &potential, float &normal_force);
 
 __device__ float Apow_dev(float x);
 
