@@ -5,7 +5,7 @@ en enfriamiento o calentamiento.
 */
 # include "encabezados.h"
 
-//# define LOG_SAMPLE
+# define LOG_SAMPLE
 # define GRO_FLAG 0
 # define HOST 0
 
@@ -87,7 +87,11 @@ int main() {
     char temperature_protocol[40], sample_type[40];
     FILE *fp_bitac, *fp_snaps, *fp_energ, *fp_gder, *fp_msd, *fp_in, *fp_out,
             *fp_press, *fp_data, *fp_colors, *fp_fself;
+#ifdef LOG_SAMPLE
+    fp_data = fopen("wca_aging_log.data", "r");
+#else
     fp_data = fopen("wca_aging_linear.data", "r");
+#endif
     if (fp_data == nullptr) fp_data = stdin;
 
     printf("temp_protocol ?\n");
@@ -191,6 +195,7 @@ int main() {
 
     //fself
     auto *fself_big = (float *) calloc(nsamples, sizeof(float));
+    auto *fself_sml = (float *) calloc(nsamples, sizeof(float));
 
     //energy and msd and pressure
     time_energy = (float *) malloc(nsamples * sizeof(float));
@@ -770,6 +775,7 @@ int main() {
                 // calculate fself
 
                 fself_isotropic(rr_big_raw_vec, rr_big_ini_vec, ngrain_big, fself_big, counter, qmax);
+                fself_isotropic(rr_sml_raw_vec, rr_sml_ini_vec, ngrain_sml, fself_sml, counter, qmax);
 
                 // calculate MSD
 
@@ -924,8 +930,10 @@ int main() {
     }
     fclose(fp_energ);
 
-    for (int i = 0; i < nsamples; ++i)
+    for (int i = 0; i < nsamples; ++i) {
         fself_big[i] /= n_configs;
+        fself_sml[i] /= n_configs;
+    }
 
     if (strcmp(sample_type, "log") == 0)
         sprintf(fself_fn, "results/decade%d/fself.out", current_decade);
@@ -939,7 +947,7 @@ int main() {
         exit(-2);
     }
     for (int i = 0; i < nsamples; ++i)
-        fprintf(fp_fself, "%f  %f\n", time_msd[i], fself_big[i]);
+        fprintf(fp_fself, "%f  %f  %f\n", time_msd[i], fself_big[i], fself_sml[i]);
 
     fclose(fp_fself);
 
@@ -1021,6 +1029,7 @@ int main() {
     free(gders);
 
     free(fself_big);
+    free(fself_sml);
 
     free(energy_us);
     free(energy_ub);

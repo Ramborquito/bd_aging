@@ -43,16 +43,16 @@ void get_forces_same_hst(char type, float3 *rr_vec, float3 *ff_vec, float *vir_v
     }
 
     //wca_49-50
-//  float invT=0.678575;
-//  float BB=50.0/49.0;
-//  float AA= 50*Apow_dev(BB);
-//  cutoff=BB*sigma;
+  float invT=1.0;
+  float BB=50.0/49.0;
+  float AA= 50*Apow_hst(BB);
+  cutoff=BB*sigma;
 
 //    //wca
 //    cutoff = 1.122462048f * sigma;
 
     //wca_modified
-    cutoff = 1.0f * sigma;
+    // cutoff = 1.0f * sigma;
 
     cutoff2 = cutoff * cutoff;
     side = pars.side;
@@ -116,8 +116,8 @@ void get_forces_same_hst(char type, float3 *rr_vec, float3 *ff_vec, float *vir_v
                         dist2 = drr.x * drr.x + drr.y * drr.y + drr.z * drr.z;
                         if (dist2 < cutoff2) {
                             dist_inv = sqrt(1.0f / dist2);
-                            //potential_wca49_50_dev(sigma,dist_inv,invT,AA,potential,normal_force);
-                            potential_wca_modified_hst(sigma, dist_inv, potential, normal_force);
+                            potential_wca49_50_hst(sigma,dist_inv,invT,AA,potential,normal_force);
+                            // potential_wca_modified_hst(sigma, dist_inv, potential, normal_force);
 
                             // calculate normal force
 
@@ -175,16 +175,16 @@ void get_forces_diff_hst(char type, char type_other, float3 *rr_vec, float3 *ff_
     }
 
     //wca_49-50
-//  float invT=0.678575;
-//  float BB=50.0/49.0;
-//  float AA= 50*Apow_dev(BB);
-//  cutoff=BB*sigma;
+  float invT=1.0;
+  float BB=50.0/49.0;
+  float AA= 50*Apow_hst(BB);
+  cutoff=BB*sigma;
 
     //wca
 //    cutoff = 1.122462048f * sigma;
 
     //wca_modified
-    cutoff = 1.0f * sigma;
+    // cutoff = 1.0f * sigma;
 
     cutoff2 = cutoff * cutoff;
     side = pars.side;
@@ -247,8 +247,8 @@ void get_forces_diff_hst(char type, char type_other, float3 *rr_vec, float3 *ff_
                         dist2 = drr.x * drr.x + drr.y * drr.y + drr.z * drr.z;
                         if (dist2 < cutoff2) {
                             dist_inv = sqrt(1.0f / dist2);
-                            //potential_wca49_50_dev(sigma,dist_inv,invT,AA,potential,normal_force);
-                            potential_wca_modified_hst(sigma, dist_inv, potential, normal_force);
+                            potential_wca49_50_hst(sigma,dist_inv,invT,AA,potential,normal_force);
+                            // potential_wca_modified_hst(sigma, dist_inv, potential, normal_force);
 
                             // calculate normal force
 
@@ -320,16 +320,16 @@ __global__ void get_forces_same_dev(char type, float3 *rr_vec, float3 *ff_vec,
     }
 
     //wca_49-50
-//  float invT=0.678575;
-//  float BB=50.0/49.0;
-//  float AA= 50*Apow_dev(BB);
-//  cutoff=BB*sigma;
+  float invT=1.0;
+  float BB=50.0/49.0;
+  float AA= 50*Apow_dev(BB);
+  cutoff=BB*sigma;
 
     //wca
 //    cutoff = 1.122462048f * sigma;
 
     //wca_modified
-    cutoff = 1.0f * sigma;
+    // cutoff = 1.0f * sigma;
 
     cutoff2 = cutoff * cutoff;
     side = pars.side;
@@ -395,8 +395,8 @@ __global__ void get_forces_same_dev(char type, float3 *rr_vec, float3 *ff_vec,
                         dist2 = drr.x * drr.x + drr.y * drr.y + drr.z * drr.z;
                         if (dist2 < cutoff2) {
                             dist_inv = sqrt(1.0f / dist2);
-                            //potential_wca49_50_dev(sigma,dist_inv,invT,AA,potential,normal_force);
-                            potential_wca_modified_dev(sigma, dist_inv, potential, normal_force);
+                            potential_wca49_50_dev(sigma,dist_inv,invT,AA,potential,normal_force);
+                            // potential_wca_modified_dev(sigma, dist_inv, potential, normal_force);
 
                             // calculate normal force
 
@@ -454,16 +454,16 @@ __global__ void get_forces_diff_dev(char type, char type_other, float3 *rr_vec,
     }
 
     //wca_49-50
-//  float invT=0.678575;
-//  float BB=50.0/49.0;
-//  float AA= 50*Apow_dev(BB);
-//  cutoff=BB*sigma;
+  float invT=1.0;
+  float BB=50.0/49.0;
+  float AA= 50*Apow_dev(BB);
+  cutoff=BB*sigma;
 
     //wca
 //    cutoff = 1.122462048f * sigma;
 
     //wca_modified
-    cutoff = 1.0f * sigma;
+    // cutoff = 1.0f * sigma;
 
     cutoff2 = cutoff * cutoff;
     side = pars.side;
@@ -529,8 +529,8 @@ __global__ void get_forces_diff_dev(char type, char type_other, float3 *rr_vec,
                         dist2 = drr.x * drr.x + drr.y * drr.y + drr.z * drr.z;
                         if (dist2 < cutoff2) {
                             dist_inv = sqrt(1.0f / dist2);
-                            //potential_wca49_50_dev(sigma,dist_inv,invT,AA,potential,normal_force);
-                            potential_wca_modified_dev(sigma, dist_inv, potential, normal_force);
+                            potential_wca49_50_dev(sigma,dist_inv,invT,AA,potential,normal_force);
+                            // potential_wca_modified_dev(sigma, dist_inv, potential, normal_force);
 
                             // calcula las fuerzas normales para este par
 
