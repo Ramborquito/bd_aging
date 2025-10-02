@@ -43,8 +43,8 @@ void set_vec_float3_hst(float3 *vec, int size, float3 value)
 
 // ===================================================================================
 
-void cell_locate_hst(char type, float3 *rr_vec, int *nocup_vec, int *cell_vec,
-         parametros pars)
+/*void cell_locate_hst(char type, float3 *rr_vec, int *nocup_vec, int *cell_vec,
+                     SystemParameters pars)
 {
   static float3 rr;
   static float cell_side_inv;
@@ -54,14 +54,14 @@ void cell_locate_hst(char type, float3 *rr_vec, int *nocup_vec, int *cell_vec,
 
   if (type == 'b')
   {
-    cell_side_inv = 1.0/pars.cell_side_big;
+    cell_side_inv = 1.0f/pars.cell_side_big;
     ngrain = pars.ngrain_big;
     ntags = pars.ntags_big;
     ncell = pars.ncell_big;
   }
   else
   {
-    cell_side_inv = 1.0/pars.cell_side_sml;
+    cell_side_inv = 1.0f/pars.cell_side_sml;
     ngrain = pars.ngrain_sml;
     ntags = pars.ntags_sml;
     ncell = pars.ncell_sml;
@@ -101,7 +101,7 @@ void cell_locate_hst(char type, float3 *rr_vec, int *nocup_vec, int *cell_vec,
   }
   
   return;
-}
+}*/
 
 // ===================================================================================
 //   DEVICE
@@ -152,8 +152,8 @@ __global__ void set_vec_float3_dev(float3 *vec, int size, float3 value)
 
 // ===================================================================================
 
-__global__ void cell_locate_dev(char type, float3 *rr_vec_dev, int *nocup_vec_dev,
-	            int *cell_vec_dev, parametros pars)
+/*__global__ void cell_locate_dev(char type, float3 *rr_vec_dev, int *nocup_vec_dev,
+                                int *cell_vec_dev, SystemParameters pars)
 {
   float3 rr;
   float cell_side_inv;
@@ -163,14 +163,14 @@ __global__ void cell_locate_dev(char type, float3 *rr_vec_dev, int *nocup_vec_de
 
   if (type == 'b')
   {
-    cell_side_inv = 1.0/pars.cell_side_big;
+    cell_side_inv = 1.0f/pars.cell_side_big;
     ngrain = pars.ngrain_big;
     ncell = pars.ncell_big;
     ntags = pars.ntags_big;
   }
   else
   {
-    cell_side_inv = 1.0/pars.cell_side_sml;
+    cell_side_inv = 1.0f/pars.cell_side_sml;
     ngrain = pars.ngrain_sml;
     ncell = pars.ncell_sml;
     ntags = pars.ntags_sml;
@@ -206,4 +206,4 @@ __global__ void cell_locate_dev(char type, float3 *rr_vec_dev, int *nocup_vec_de
   }
   
   return;
-}
+}*/

@@ -5,10 +5,8 @@ set(CMAKE_CUDA_STANDARD 20)
 
 add_executable(bd_aging_self.bin main.cu
         cell_locate.cu
-        colors.cu
-        Contracting_Vector3D.cu
-        get_forces.cu
-        get_gder.cu
+        get_forces_poly.cu
+        get_gder_poly.cu
         potentials.cu
         rannew64.cu
         update_ermak.cu

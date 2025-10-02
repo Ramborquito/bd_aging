@@ -5,36 +5,25 @@
 // ===================================================================================
 
 
-void update_ermak_hst(char type, float3 *rr_vec, float3 *rr_raw_vec,
-                      float3 *ff_vec, gsl_rng *rand, parametros pars) {
-    int ngrain;
-    float3 drr_random, drr_total, ff, rr, rr_raw;
-    float side, side_inv, dt, diameter, diameter_inverse;
-    float temperature, amplitude;
+void update_ermak_hst(Grains &grain_vec, SystemParameters pars, gsl_rng *rand) {
+    float3 drr_random, drr_total;
 
-    side = pars.side;
-    side_inv = 1.0f / side;
-    temperature = pars.temp_set;
-    dt = pars.dt;
-
-    if (type == 'b') {
-        ngrain = pars.ngrain_big;
-        diameter = pars.sigma_big;
-        diameter_inverse = 1.0f / diameter;
-    } else {
-        ngrain = pars.ngrain_sml;
-        diameter = pars.sigma_sml;
-        diameter_inverse = 1.0f / diameter;
-    }
-
-    // amplitude of the random displacement
-    amplitude = sqrt(2.0 * temperature * diameter_inverse * dt);
+    float side = pars.side;
+    float side_inv = 1.0f / side;
+    float temperature = pars.temperature;
+    float dt = pars.dt;
+    int ngrain = grain_vec.number_particles;
 
     for (int mm = 0; mm < ngrain; ++mm) {
         //fetch
-        ff = ff_vec[mm];
-        rr = rr_vec[mm];
-        rr_raw = rr_raw_vec[mm];
+        float3 ff = grain_vec.ff[mm];
+        float3 rr = grain_vec.rr[mm];
+        float3 rr_raw = grain_vec.rr_raw[mm];
+        float diameter = grain_vec.diameter[mm];
+        float diameter_inverse = 1.0f / diameter;
+
+        // amplitude of the random displacement
+        const float amplitude = sqrt(2.0 * temperature * diameter_inverse * dt);
 
         //random displacement
 
@@ -68,12 +57,9 @@ void update_ermak_hst(char type, float3 *rr_vec, float3 *rr_raw_vec,
             printf("Warning: Particle position at zero: (%f, %f, %f)\n", rr.x, rr.y, rr.z);
         //save
 
-        rr_vec[mm] = rr;
-        rr_raw_vec[mm] = rr_raw;
-
+        grain_vec.rr[mm] = rr;
+        grain_vec.rr_raw[mm] = rr_raw;
     }
-
-
 }
 
 // ===================================================================================
@@ -88,38 +74,29 @@ __global__ void setup_rng_kernel(curandState *states, unsigned long seed, int N)
         curand_init(seed, idx, 0, &states[idx]);
 }
 
-__global__ void update_ermak_dev(char type, float3 *rr_vec, float3 *rr_raw_vec,
-                      float3 *ff_vec, curandState *states, parametros pars) {
-    int ngrain, mm;
-    float3 drr_random, drr_total, ff, rr, rr_raw;
-    float side, side_inv, dt, diameter, diameter_inverse;
-    float temperature, amplitude;
+__global__ void update_ermak_dev(Grains &grain_vec, SystemParameters pars, curandState *states) {
+    float3 drr_random, drr_total;
 
-    side = pars.side;
-    side_inv = 1.0f / side;
-    temperature = pars.temp_set;
-    dt = pars.dt;
+    float side = pars.side;
+    float side_inv = 1.0f / side;
+    float temperature = pars.temperature;
+    float dt = pars.dt;
+    int ngrain = grain_vec.number_particles;
 
-    if (type == 'b') {
-        ngrain = pars.ngrain_big;
-        diameter = pars.sigma_big;
-        diameter_inverse = 1.0f / diameter;
-    } else {
-        ngrain = pars.ngrain_sml;
-        diameter = pars.sigma_sml;
-        diameter_inverse = 1.0f / diameter;
-    }
 
-    // amplitude of the random displacement
-    amplitude = sqrt(2.0 * temperature * diameter_inverse * dt);
 
-    mm = threadIdx.x + blockIdx.x * blockDim.x;
+    int mm = threadIdx.x + blockIdx.x * blockDim.x;
 
     if (mm < ngrain) {
         //fetch
-        ff = ff_vec[mm];
-        rr = rr_vec[mm];
-        rr_raw = rr_raw_vec[mm];
+        float3 ff = grain_vec.ff[mm];
+        float3 rr = grain_vec.rr[mm];
+        float3 rr_raw = grain_vec.rr_raw[mm];
+        float diameter = grain_vec.diameter[mm];
+        float diameter_inverse = 1.0f / diameter;
+
+        // amplitude of the random displacement
+        const float amplitude = sqrt(2.0 * temperature * diameter_inverse * dt);
 
         //random displacement
 
@@ -151,10 +128,7 @@ __global__ void update_ermak_dev(char type, float3 *rr_vec, float3 *rr_raw_vec,
 
         //save
 
-        rr_vec[mm] = rr;
-        rr_raw_vec[mm] = rr_raw;
-
+        grain_vec.rr[mm] = rr;
+        grain_vec.rr_raw[mm] = rr_raw;
     }
-
-
 }

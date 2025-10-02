@@ -4,8 +4,9 @@ para estudiar las fuerzas efectivas bajo el esquema de contraccion de fuerzas en
 en enfriamiento o calentamiento.
 */
 # include "encabezados.h"
+#include "polydispersity_IO.h"
 
-//# define LOG_SAMPLE
+# define LOG_SAMPLE
 # define GRO_FLAG 0
 # define HOST 0
 
@@ -54,26 +55,22 @@ std::vector<int> sampling_indexes(float minimal_decade, float run_time, float dt
 
 
 int main() {
-    float3 *rr_big_vec, *rr_big_raw_vec, *rr_big_ini_vec, *ff_big_vec,
-            *rr_sml_vec, *rr_sml_raw_vec, *rr_sml_ini_vec, *ff_sml_vec;
+
+    PolydispersityParameters poly{};
+    SystemParameters pars{};
     float3 rr, drr, zero;
-    float *vir_big_vec, *vir_sml_vec, *pot_big_vec, *pot_sml_vec;
-    float *gder_bb_vec, *gder_bs_vec, *gder_sb_vec, *gder_ss_vec;
-    int *nocup_big_vec, *cell_big_vec, *nocup_sml_vec, *cell_sml_vec;
     double run_time, trans_time, dt;
-    float side, cutoff, bin_size_gder, qmax,
+    float side, cutoff, bin_size_gder, qmax, xngrain_big,
             shell_vol, vol_free, msd_big,
             msd_sml, dist, aux, sigma, sigma_big, sigma_sml, mass_big, mass_sml,
-            range_gder, xngrain_big, xngrain_sml, xngrain_tot, big_z,
-            virial, ene_pot_big, ene_pot_sml, xnb, T0, Tf, t0, tf, time, period,
-            cell_side_big, phi_big, phi_sml, cell_side_sml, volume;
-    float ***gders, *energy_ub, *energy_us, *energy_temp, *msd_b, *msd_s,
+            range_gder, xngrain_tot, big_z,
+            virial, xnb, T0, Tf, t0, tf, time, period,
+            volume;
+    float ***gders, *energy_temp,
             *time_energy, *time_msd;
-    int ngrain_tot, ngrain_big, ngrain_sml, ni, niter, ntrans, ngap, idum,
-            nsamples, ncell_big, ncell_sml, ncell_big3, ncell_sml3, ntot_big,
-            ntot_sml, ii, jj, nbins_gder, ntags_big,
-            ntags_sml, nocup, nocup_big_max, nocup_sml_max, counter, ngap_rescaling, n_configs;
-    int NH, NB_BIG, NB_SML;
+    int ngrain_tot, number_species, ni, niter, ntrans, ngap, idum, ntags_big, ntags_sml,
+            nsamples, ii, jj, nbins_gder, counter, ngap_rescaling, n_configs;
+    int NH;
     double minimal_decade;
     bool should_sample, print_decades_configs;
     int number_of_tws, number_of_tw, current_decade;
@@ -81,13 +78,12 @@ int main() {
 # if !HOST
     int NB_CELL_BIG3, NB_CELL_SML3, NB_NTOT_BIG, NB_NTOT_SML;
 # endif
-    parametros pars;
     char renglon[200], infile[80], gder_fn[80], energy_fn[80], msd_fn[80], snapshots_fn[80],
             press_fn[80], fself_fn[80];
-    char temperature_protocol[40], sample_type[40];
+    char temperature_protocol[40], sample_type[40], distribution[40];
     FILE *fp_bitac, *fp_snaps, *fp_energ, *fp_gder, *fp_msd, *fp_in, *fp_out,
             *fp_press, *fp_data, *fp_colors, *fp_fself;
-    fp_data = fopen("wca_aging_linear.data", "r");
+    fp_data = fopen("wca_aging_log.data", "r");
     if (fp_data == nullptr) fp_data = stdin;
 
     printf("temp_protocol ?\n");
@@ -153,11 +149,9 @@ int main() {
     // calcula y almacena constantes
 
     pars.dt = dt;
-    pars.temp_set = T0;
+    pars.temperature = T0;
     pars.nbins_gder = nbins_gder;
     pars.range_gder = range_gder;
-    pars.ntags_big = ntags_big;
-    pars.ntags_sml = ntags_sml;
 
     bin_size_gder = range_gder / ((float) nbins_gder);
     pars.bin_size_gder = bin_size_gder;
@@ -174,7 +168,7 @@ int main() {
 
 
     //Initialize memory to accumulate results
-
+    number_species = 1;
     //Values to calculate size of arrays
     niter = (int) (run_time / dt);
     ngap = niter / nsamples;
@@ -182,8 +176,8 @@ int main() {
     //g_ij(r) bidisperse
     gders = (float ***) malloc(nsamples * sizeof(float **));
     for (int i = 0; i < nsamples; ++i) {
-        gders[i] = (float **) malloc(4 * sizeof(float *));
-        for (int j = 0; j < 4; ++j) {
+        gders[i] = (float **) malloc(1 * sizeof(float *));
+        for (int j = 0; j < 1; ++j) {
             gders[i][j] = (float *) malloc(nbins_gder * sizeof(float));
             for (int k = 0; k < nbins_gder; ++k) gders[i][j][k] = 0.0;
         }
@@ -194,13 +188,20 @@ int main() {
 
     //energy and msd and pressure
     time_energy = (float *) malloc(nsamples * sizeof(float));
-    energy_ub = (float *) calloc(nsamples, sizeof(float));
-    energy_us = (float *) calloc(nsamples, sizeof(float));
+
+    float **potential_energy;
+    potential_energy = (float ** ) malloc(number_species * sizeof(float *));
+    for (int i = 0; i < number_species; ++i)
+        potential_energy[i] = (float *) calloc(nsamples, sizeof(float));
+
     energy_temp = (float *) calloc(nsamples, sizeof(float));
 
     time_msd = (float *) malloc(nsamples * sizeof(float));
-    msd_b = (float *) calloc(nsamples, sizeof(float));
-    msd_s = (float *) calloc(nsamples, sizeof(float));
+
+    float **msd;
+    msd = (float **) malloc(number_species * sizeof(float *));
+    for (int i = 0; i < number_species; ++i)
+        msd[i] = (float *) calloc(nsamples, sizeof(float));
 
     auto time_pressure = (float *) malloc(nsamples * sizeof(float));
     auto pressure = (float *) calloc(nsamples, sizeof(float));
@@ -209,7 +210,7 @@ int main() {
     fp_colors = fopen("color_statistics.out", "w");
 #endif
     ////////////////////////////Starts loop//////////////////////////////////////////////////////////////////////
-
+    xngrain_big = 0.0f;
     for (int i_config = 1; i_config <= n_configs; ++i_config) {
         counter = 0;
         int energy_counter = 0;
@@ -224,175 +225,111 @@ int main() {
         fp_in = fopen(infile, "r");
         if (fp_in == nullptr) {
             printf("Verify file path: %s", infile);
-            fflush(stdout);
             exit(-2);
         }
-
-        fgets(renglon, sizeof(renglon), fp_in);
-        sscanf(renglon, "%f %f", &phi_big, &phi_sml);
-        fgets(renglon, sizeof(renglon), fp_in);
-        sscanf(renglon, "%f", &side);
-        fgets(renglon, sizeof(renglon), fp_in);
-        sscanf(renglon, "%d %d %d", &ngrain_big, &ngrain_sml, &ngrain_tot);
-        fgets(renglon, sizeof(renglon), fp_in);
-        sscanf(renglon, "%f %f", &sigma_big, &sigma_sml);
-        fgets(renglon, sizeof(renglon), fp_in);
-        sscanf(renglon, "%f %f", &mass_big, &mass_sml);
-        fgets(renglon, sizeof(renglon), fp_in);
+        scan_parameters_init_config(fp_in, poly, pars, distribution);
 
         // almacena datos iniciales
-        if (i_config == 1) {
-            pars.side = side;
-            pars.ngrain_big = ngrain_big;
-            pars.ngrain_sml = ngrain_sml;
-            pars.sigma_big = sigma_big;
-            pars.sigma_sml = sigma_sml;
-            pars.mass_big = mass_big;
-            pars.mass_sml = mass_sml;
-            xngrain_big = (float) ngrain_big;
-            xngrain_sml = (float) ngrain_sml;
-            xngrain_tot = (float) ngrain_tot;
-            volume = side * side * side;
+        number_species = pars.number_species;
+        ngrain_tot = pars.ngrain_total;
+        side = pars.side;
 
-            fp_bitac = fopen("bitacora", "w");
+            // Memory allocation
 
-            // cell parameters
+    Grains *grain;
+    cudaMallocManaged(&grain, number_species * sizeof(Grains));
 
-            cutoff = sigma_big;
-            ncell_big = (int) (side / (1.05 * cutoff));
-            cell_side_big = side / ((float) ncell_big);
-            pars.ncell_big = ncell_big;
-            pars.cell_side_big = cell_side_big;
+    auto NB = (int *) malloc(number_species * sizeof(int));
 
-            cutoff = sigma_sml;
-            ncell_sml = (int) (side / (1.05 * cutoff));
-            cell_side_sml = side / ((float) ncell_sml);
-            pars.ncell_sml = ncell_sml;
-            pars.cell_side_sml = cell_side_sml;
+    for (int i = 0; i < number_species; ++i) {
 
-            fprintf(fp_bitac, "side  %f  ngr b s tot  %d  %d  %d\n", side, ngrain_big,
-                    ngrain_sml, ngrain_tot);
-            fprintf(fp_bitac, "ncell b, s  %d  %d\n", ncell_big, ncell_sml);
-            fprintf(fp_bitac, "cell_side b, s  %f  %f\n", cell_side_big, cell_side_sml);
-            fprintf(fp_bitac, "ntags b, s  %d  %d\n", ntags_big, ntags_sml);
-            fflush(fp_bitac);
+        grain[i].number_particles = pars.N[i];
 
-            // ranges
+        cudaMallocManaged(&(grain[i].rr), grain[i].number_particles * sizeof(float3));
+        cudaMallocManaged(&(grain[i].vv), grain[i].number_particles * sizeof(float3));
+        cudaMallocManaged(&(grain[i].ff), grain[i].number_particles * sizeof(float3));
+        cudaMallocManaged(&(grain[i].diameter), grain[i].number_particles * sizeof(float));
+        cudaMallocManaged(&(grain[i].mass), grain[i].number_particles * sizeof(float));
 
-            pars.nrange_bb = 1;
-            aux = (sigma_big + sigma_sml) / 2.0;
-            pars.nrange_bs = 1 + (int) (aux / cell_side_sml);
-            pars.nrange_sb = 1;
-            pars.nrange_ss = 1;
+        cudaMallocManaged(&(grain[i].virial), grain[i].number_particles * sizeof(float));
+        cudaMallocManaged(&(grain[i].potential), grain[i].number_particles * sizeof(float));
 
-            fprintf(fp_bitac, "ranges bb, bs  %d  %d\n", pars.nrange_bb, pars.nrange_bs);
-            fprintf(fp_bitac, "ranges sb, ss  %d  %d\n", pars.nrange_sb, pars.nrange_ss);
+        // for msd
+        cudaMallocManaged(&(grain[i].rr0), grain[i].number_particles * sizeof(float3));
+        cudaMallocManaged(&(grain[i].rr_raw), grain[i].number_particles * sizeof(float3));
 
-            // parameters
+    }
 
-            ncell_big3 = ncell_big * ncell_big * ncell_big;
-            ncell_sml3 = ncell_sml * ncell_sml * ncell_sml;
-            ntot_big = ncell_big3 * ntags_big;
-            ntot_sml = ncell_sml3 * ntags_sml;
-            fprintf(fp_bitac, "ncell_big3  %d  ntot_big  %d\n", ncell_big3, ntot_big);
-            fprintf(fp_bitac, "ncell_sml3  %d  ntot_sml  %d\n", ncell_sml3, ntot_sml);
+    // bloques e hilos
 
-            // memory allocation
-#if !HOST
+    NH = 256;
+    pars.NH = NH;
 
-            cudaMallocManaged(&rr_big_vec, ngrain_big * sizeof(float3));
-            cudaMallocManaged(&rr_big_raw_vec, ngrain_big * sizeof(float3));
-            cudaMallocManaged(&rr_big_ini_vec, ngrain_big * sizeof(float3));
-            cudaMallocManaged(&ff_big_vec, ngrain_big * sizeof(float3));
-            cudaMallocManaged(&vir_big_vec, ngrain_big * sizeof(float));
-            cudaMallocManaged(&pot_big_vec, ngrain_big * sizeof(float));
+    //number of blocks necessary to include all ith particles
+    for (int i = 0; i < number_species; ++i) NB[i] = 1 + (grain[i].number_particles - 1) / NH;
 
-            cudaMallocManaged(&nocup_big_vec, ncell_big3 * sizeof(int));
-            cudaMallocManaged(&cell_big_vec, ntot_big * sizeof(int));
+    // Radial distribution functions g_ij(r)
 
-            cudaMallocManaged(&rr_sml_vec, ngrain_sml * sizeof(float3));
-            cudaMallocManaged(&rr_sml_raw_vec, ngrain_sml * sizeof(float3));
-            cudaMallocManaged(&rr_sml_ini_vec, ngrain_sml * sizeof(float3));
-            cudaMallocManaged(&ff_sml_vec, ngrain_sml * sizeof(float3));
-            cudaMallocManaged(&vir_sml_vec, ngrain_sml * sizeof(float));
-            cudaMallocManaged(&pot_sml_vec, ngrain_sml * sizeof(float));
 
-            cudaMallocManaged(&nocup_sml_vec, ncell_sml3 * sizeof(int));
-            cudaMallocManaged(&cell_sml_vec, ntot_sml * sizeof(int));
-#else
-            force_ls_vec = (float *) malloc(nbins_dplt * sizeof(float));
+    float ***gr;
 
-            rr_big_vec = (float3 *) malloc(ngrain_big * sizeof(float3));
-            rr_big_raw_vec = (float3 *) malloc(ngrain_big * sizeof(float3));
-            rr_big_ini_vec = (float3 *) malloc(ngrain_big * sizeof(float3));
-            ff_big_vec = (float3 *) malloc(ngrain_big * sizeof(float3));
-            vir_big_vec = (float *) malloc(ngrain_big * sizeof(float));
-            pot_big_vec = (float *) malloc(ngrain_big * sizeof(float));
+    cudaMallocManaged(&gr, number_species * sizeof(float **));
 
-            nocup_big_vec = (int *) malloc(ncell_big3 * sizeof(int));
-            cell_big_vec = (int *) malloc(ntot_big * sizeof(int));
+    for (int i = 0; i < number_species; ++i) {
+        cudaMallocManaged(&(gr[i]), number_species * sizeof(float *));
+        for (int j = 0; j < number_species; ++j)
+            cudaMallocManaged(&(gr[i][j]), (NB[i] * nbins_gder) * sizeof(float));
+    }
 
-            rr_sml_vec = (float3 *) malloc(ngrain_sml * sizeof(float3));
-            rr_sml_raw_vec = (float3 *) malloc(ngrain_sml * sizeof(float3));
-            rr_sml_ini_vec = (float3 *) malloc(ngrain_sml * sizeof(float3));
-            ff_sml_vec = (float3 *) malloc(ngrain_sml * sizeof(float3));
-            vir_sml_vec = (float *) malloc(ngrain_sml * sizeof(float));
-            pot_sml_vec = (float *) malloc(ngrain_sml * sizeof(float));
 
-            nocup_sml_vec = (int *) malloc(ncell_sml3 * sizeof(int));
-            cell_sml_vec = (int *) malloc(ntot_sml * sizeof(int));
-#endif
+    // read vectors for grains
+    int nparticles = 0;
+    for (int i = 0; i < number_species; ++i) {
 
-            // blocks and threads
+        for (int mm = nparticles; mm < nparticles + pars.N[i]; ++mm) {
 
-            NH = 256;
-            pars.NH = NH;
-
-            NB_BIG = 1 + (ngrain_big - 1) / NH;
-            NB_SML = 1 + (ngrain_sml - 1) / NH;
-#if !HOST
-            NB_CELL_BIG3 = 1 + (ncell_big3 - 1) / NH;
-            NB_CELL_SML3 = 1 + (ncell_sml3 - 1) / NH;
-            NB_NTOT_BIG = 1 + (ntot_big - 1) / NH;
-            NB_NTOT_SML = 1 + (ntot_sml - 1) / NH;
-# endif
-
-            // gets memory for gder.
-#if !HOST
-            cudaMallocManaged(&gder_bb_vec, NB_BIG * nbins_gder * sizeof(float));
-            cudaMallocManaged(&gder_ss_vec, NB_SML * nbins_gder * sizeof(float));
-            cudaMallocManaged(&gder_bs_vec, NB_BIG * nbins_gder * sizeof(float));
-            cudaMallocManaged(&gder_sb_vec, NB_SML * nbins_gder * sizeof(float));
-#else
-            gder_bb_vec = (float *) malloc(NB_BIG * nbins_gder * sizeof(float));
-            gder_ss_vec = (float *) malloc(NB_SML * nbins_gder * sizeof(float));
-            gder_bs_vec = (float *) malloc(NB_BIG * nbins_gder * sizeof(float));
-            gder_sb_vec = (float *) malloc(NB_SML * nbins_gder * sizeof(float));
-
-#endif
-        }
-
-        // positions
-
-        for (int mm = 0; mm < ngrain_tot; mm++) {
             int nn;
+            float3 rr, vv;
+            float diameter, mass;
             fgets(renglon, sizeof(renglon), fp_in);
-            sscanf(renglon, "%d %f %f %f", &nn, &(rr.x), &(rr.y),
-                   &(rr.z)); // se debe eliminar esta parte cuando la init config sea correcta
-
+            sscanf(renglon, "%d %f %f %f %f %f %f %f %f", &nn, &(rr.x), &(rr.y), &(rr.z),
+                   &(vv.x), &(vv.y), &(vv.z), &diameter, &mass);
             if (nn != mm) {
-                printf("error: mm %d  nn %d no match\n", mm, nn);
-                exit(1);
+                printf("error: %d != %d\n", nn, mm);
+                exit(-1);
             }
-            if (mm < ngrain_big) {
-                rr_big_vec[mm] = rr;
-                rr_big_raw_vec[mm] = rr;
-            } else {
-                rr_sml_vec[mm - ngrain_big] = rr;
-                rr_sml_raw_vec[mm - ngrain_big] = rr;
-            }
+            grain[i].rr[mm - nparticles] = rr;
+            grain[i].vv[mm - nparticles] = vv;
+            grain[i].diameter[mm - nparticles] = diameter;
+            grain[i].mass[mm - nparticles] = mass;
         }
-        fclose(fp_in);
+
+        nparticles += pars.N[i];
+    }
+
+    fclose(fp_in);
+
+    // almacena datos iniciales
+
+    pars.side = side;
+    volume = side * side * side;
+    xngrain_big += (float) pars.N[0];
+    fp_bitac = fopen("bitacora", "w");
+
+    // write in stdin
+    print_parameters_simulation(stdin, pars, infile, trans_time, run_time, nsamples);
+    print_parameters_init_config(stdin, poly, pars, distribution);
+
+    // write in bitacora
+    print_parameters_simulation(fp_bitac, pars, infile, trans_time, run_time, nsamples);
+    print_parameters_init_config(fp_bitac, poly, pars, distribution);
+
+    // for gder set it in zero.
+
+    for (int i = 0; i < number_species; ++i)
+        for (int j = 0; j < number_species; ++j)
+            for (int nbin = 0; nbin < NB[i] * nbins_gder; ++nbin)
+                gr[i][j][nbin] = 0.0f;
 
 
         // other parameters
@@ -412,76 +349,66 @@ int main() {
         // transient and run
         //==================================================================================
 
-        // clear cell vectors and do locate
-
-#if HOST
-        set_vec_int_hst(nocup_big_vec, ncell_big3, 0);
-        set_vec_int_hst(cell_big_vec, ntot_big, -1);
-        cell_locate_hst('b', rr_big_vec, nocup_big_vec, cell_big_vec, pars);
-        set_vec_int_hst(nocup_sml_vec, ncell_sml3, 0);
-        set_vec_int_hst(cell_sml_vec, ntot_sml, -1);
-        cell_locate_hst('s', rr_sml_vec, nocup_sml_vec, cell_sml_vec, pars);
-# else
-        set_vec_int_dev<<<NB_CELL_BIG3, NH>>>(nocup_big_vec, ncell_big3, 0);
-        set_vec_int_dev<<<NB_NTOT_BIG, NH>>>(cell_big_vec, ntot_big, -1);
-        cell_locate_dev<<<NB_BIG, NH>>>('b', rr_big_vec, nocup_big_vec, cell_big_vec, pars);
-        set_vec_int_dev<<<NB_CELL_SML3, NH>>>(nocup_sml_vec, ncell_sml3, 0);
-        set_vec_int_dev<<<NB_NTOT_SML, NH>>>(cell_sml_vec, ntot_sml, -1);
-        cell_locate_dev<<<NB_SML, NH>>>('s', rr_sml_vec, nocup_sml_vec, cell_sml_vec, pars);
-# endif
 
         // clear forces
 
 # if HOST
-        set_vec_float3_hst(ff_big_vec, ngrain_big, zero);
-        set_vec_float_hst(vir_big_vec, ngrain_big, 0.0);
-        set_vec_float_hst(pot_big_vec, ngrain_big, 0.0);
-        set_vec_float3_hst(ff_sml_vec, ngrain_sml, zero);
-        set_vec_float_hst(vir_sml_vec, ngrain_sml, 0.0);
-        set_vec_float_hst(pot_sml_vec, ngrain_sml, 0.0);
+
+        for (int i = 0; i < number_species; ++i) {
+            set_vec_float3_hst(grain[i].ff, grain[i].number_particles, zero);
+            set_vec_float_hst(grain[i].virial, grain[i].number_particles, 0.0);
+            set_vec_float_hst(grain[i].potential, grain[i].number_particles, 0.0);
+        }
+
 # else
-        set_vec_float3_dev<<<NB_BIG, NH>>>(ff_big_vec, ngrain_big, zero);
-        set_vec_float_dev<<<NB_BIG, NH>>>(vir_big_vec, ngrain_big, 0.0);
-        set_vec_float_dev<<<NB_BIG, NH>>>(pot_big_vec, ngrain_big, 0.0);
-        set_vec_float3_dev<<<NB_SML, NH>>>(ff_sml_vec, ngrain_sml, zero);
-        set_vec_float_dev<<<NB_SML, NH>>>(vir_sml_vec, ngrain_sml, 0.0);
-        set_vec_float_dev<<<NB_SML, NH>>>(pot_sml_vec, ngrain_sml, 0.0);
+        for (int i = 0; i < number_species; ++i) {
+            set_vec_float3_dev<<<NB[i], NH>>>(grain[i].ff, grain[i].number_particles, zero);
+            set_vec_float_dev<<<NB[i], NH>>>(grain[i].virial, grain[i].number_particles, 0.0);
+            set_vec_float_dev<<<NB[i], NH>>>(grain[i].potential, grain[i].number_particles, 0.0);
+        }
 # endif
 
         // forces
 
 # if HOST
-        get_forces_same_hst('b', rr_big_vec, ff_big_vec, vir_big_vec, pot_big_vec,
-                            nocup_big_vec, cell_big_vec, pars);
-        get_forces_same_hst('s', rr_sml_vec, ff_sml_vec, vir_sml_vec, pot_sml_vec,
-                            nocup_sml_vec, cell_sml_vec, pars);
-        get_forces_diff_hst('b', 's', rr_big_vec, ff_big_vec, rr_sml_vec, vir_big_vec,
-                            pot_big_vec, nocup_sml_vec, cell_sml_vec, pars);
-        get_forces_diff_hst('s', 'b', rr_sml_vec, ff_sml_vec, rr_big_vec, vir_sml_vec,
-                            pot_sml_vec, nocup_big_vec, cell_big_vec, pars);
+
+        for (int i = 0; i < number_species; ++i) {
+
+            get_forces_same_hst(grain[i], pars);
+
+            for (int j = 0; j < number_species; ++j) {
+                if (i == j) continue;
+                get_forces_diff_hst(grain[i], grain[j], pars);
+            }
+        }
+
 # else
-        get_forces_same_dev<<<NB_BIG, NH>>>('b', rr_big_vec, ff_big_vec, vir_big_vec,
-                                            pot_big_vec, nocup_big_vec, cell_big_vec, pars);
-        get_forces_same_dev<<<NB_SML, NH>>>('s', rr_sml_vec, ff_sml_vec, vir_sml_vec,
-                                            pot_sml_vec, nocup_sml_vec, cell_sml_vec, pars);
-        get_forces_diff_dev<<<NB_BIG, NH>>>('b', 's', rr_big_vec, ff_big_vec, rr_sml_vec,
-                                            vir_big_vec, pot_big_vec, nocup_sml_vec, cell_sml_vec, pars);
-        get_forces_diff_dev<<<NB_SML, NH>>>('s', 'b', rr_sml_vec, ff_sml_vec, rr_big_vec,
-                                            vir_sml_vec, pot_sml_vec, nocup_big_vec, cell_big_vec, pars);
-#endif
+
+        for (int i = 0; i < number_species; ++i) {
+
+            get_forces_same_dev<<<NB[i], NH>>>(grain[i], pars);
+
+            for (int j = 0; j < number_species; ++j) {
+                if (i == j) continue;
+                get_forces_diff_dev<<<NB[i], NH>>>(grain[i], grain[j], pars);
+            }
+        }
+
+# endif
 
         // initialize Random Number Generators
 #if HOST
         gsl_rng *rand = gsl_rng_alloc(gsl_rng_mt19937);
         gsl_rng_set(rand, idum);
 #else
-        curandState *devStates_big;
-        curandState *devStates_sml;
-        cudaMalloc(&devStates_big, (size_t) ngrain_big * sizeof(curandState));
-        cudaMalloc(&devStates_sml, (size_t) ngrain_sml * sizeof(curandState));
 
-        setup_rng_kernel<<<NB_BIG, NH>>>(devStates_big, idum, ngrain_big);
-        setup_rng_kernel<<<NB_SML, NH>>>(devStates_sml, idum + 1, ngrain_sml);
+        curandState **devStates;
+        devStates = (curandState **) malloc(sizeof(curandState *));
+        for (int i = 0; i < number_species; ++i) {
+            cudaMalloc(&devStates[i], (size_t) pars.N[i] * sizeof(curandState));
+            setup_rng_kernel<<<NB[i], NH>>>(devStates[i], idum + i, pars.N[i]);
+        }
+
 #endif
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -495,23 +422,21 @@ int main() {
             cudaDeviceSynchronize();
 
             if (ni == 0) {
-                cudaMemcpy(rr_big_raw_vec, rr_big_vec, ngrain_big * sizeof(float3),
-                           cudaMemcpyHostToHost);
-                cudaMemcpy(rr_big_ini_vec, rr_big_vec, ngrain_big * sizeof(float3),
-                           cudaMemcpyHostToHost);
-                cudaMemcpy(rr_sml_raw_vec, rr_sml_vec, ngrain_sml * sizeof(float3),
-                           cudaMemcpyHostToHost);
-                cudaMemcpy(rr_sml_ini_vec, rr_sml_vec, ngrain_sml * sizeof(float3),
-                           cudaMemcpyHostToHost);
+                for (int i = 0; i < number_species; ++i) {
+                    cudaMemcpy(grain[i].rr0, grain[i].rr, grain[i].number_particles * sizeof(float3), cudaMemcpyHostToHost);
+                    cudaMemcpy(grain[i].rr_raw, grain[i].rr, grain[i].number_particles * sizeof(float3),
+                               cudaMemcpyHostToHost);
+                }
             }
 
             //Evolution Ermak-McCammon
 #if HOST
-            update_ermak_hst('b', rr_big_vec, rr_big_raw_vec, ff_big_vec, rand, pars);
-            update_ermak_hst('s', rr_sml_vec, rr_sml_raw_vec, ff_sml_vec, rand, pars);
+            for (int i = 0; i < number_species; ++i)
+                update_ermak_hst(grain[i], pars, rand);
+
 #else
-            update_ermak_dev<<<NB_BIG, NH>>>('b', rr_big_vec, rr_big_raw_vec, ff_big_vec, devStates_big, pars);
-            update_ermak_dev<<<NB_SML, NH>>>('s', rr_sml_vec, rr_sml_raw_vec, ff_sml_vec, devStates_sml, pars);
+            for (int i = 0; i < number_species; ++i)
+                update_ermak_dev<<<NB[i], NH>>>(grain[i], pars, devStates[i]);
 
             cudaDeviceSynchronize();
 #endif
@@ -519,94 +444,58 @@ int main() {
             //calculate time and temperature
             time = dt * (1.0 + (float) ni);
             if (strcmp(temperature_protocol, "linear") == 0)
-                pars.temp_set = calculate_temp_linear(T0, Tf, t0, tf, time);
+                pars.temperature = calculate_temp_linear(T0, Tf, t0, tf, time);
             if (strcmp(temperature_protocol, "sine") == 0)
-                pars.temp_set = calculate_temp_sine(T0, Tf, t0, tf, period, time);
+                pars.temperature = calculate_temp_sine(T0, Tf, t0, tf, period, time);
 
-            // clear cell vectors and do cell locate
-
-# if HOST
-            set_vec_int_hst(nocup_big_vec, ncell_big3, 0);
-            set_vec_int_hst(cell_big_vec, ntot_big, -1);
-            cell_locate_hst('b', rr_big_vec, nocup_big_vec, cell_big_vec, pars);
-            set_vec_int_hst(nocup_sml_vec, ncell_sml3, 0);
-            set_vec_int_hst(cell_sml_vec, ntot_sml, -1);
-            cell_locate_hst('s', rr_sml_vec, nocup_sml_vec, cell_sml_vec, pars);
-# else
-            set_vec_int_dev<<<NB_CELL_BIG3, NH>>>(nocup_big_vec, ncell_big3, 0);
-            set_vec_int_dev<<<NB_NTOT_BIG, NH>>>(cell_big_vec, ntot_big, -1);
-            cell_locate_dev<<<NB_BIG, NH>>>('b', rr_big_vec, nocup_big_vec,
-                                            cell_big_vec, pars);
-            set_vec_int_dev<<<NB_CELL_SML3, NH>>>(nocup_sml_vec, ncell_sml3, 0);
-            set_vec_int_dev<<<NB_NTOT_SML, NH>>>(cell_sml_vec, ntot_sml, -1);
-            cell_locate_dev<<<NB_SML, NH>>>('s', rr_sml_vec, nocup_sml_vec,
-                                            cell_sml_vec, pars);
-# endif
 
             // clear forces
 
 # if HOST
-            set_vec_float3_hst(ff_big_vec, ngrain_big, zero);
-            set_vec_float_hst(vir_big_vec, ngrain_big, 0.0);
-            set_vec_float_hst(pot_big_vec, ngrain_big, 0.0);
-            set_vec_float3_hst(ff_sml_vec, ngrain_sml, zero);
-            set_vec_float_hst(vir_sml_vec, ngrain_sml, 0.0);
-            set_vec_float_hst(pot_sml_vec, ngrain_sml, 0.0);
+
+            for (int i = 0; i < number_species; ++i) {
+                set_vec_float3_hst(grain[i].ff, grain[i].number_particles, zero);
+                set_vec_float_hst(grain[i].virial, grain[i].number_particles, 0.0);
+                set_vec_float_hst(grain[i].potential, grain[i].number_particles, 0.0);
+            }
+
 # else
-            set_vec_float3_dev<<<NB_BIG, NH>>>(ff_big_vec, ngrain_big, zero);
-            set_vec_float_dev<<<NB_BIG, NH>>>(vir_big_vec, ngrain_big, 0.0);
-            set_vec_float_dev<<<NB_BIG, NH>>>(pot_big_vec, ngrain_big, 0.0);
-            set_vec_float3_dev<<<NB_SML, NH>>>(ff_sml_vec, ngrain_sml, zero);
-            set_vec_float_dev<<<NB_SML, NH>>>(vir_sml_vec, ngrain_sml, 0.0);
-            set_vec_float_dev<<<NB_SML, NH>>>(pot_sml_vec, ngrain_sml, 0.0);
+
+            for (int i = 0; i < number_species; ++i) {
+                set_vec_float3_dev<<<NB[i], NH>>>(grain[i].ff, grain[i].number_particles, zero);
+                set_vec_float_dev<<<NB[i], NH>>>(grain[i].virial, grain[i].number_particles, 0.0);
+                set_vec_float_dev<<<NB[i], NH>>>(grain[i].potential, grain[i].number_particles, 0.0);
+            }
+
 # endif
 
             // get new forces
 
 # if HOST
-            get_forces_same_hst('b', rr_big_vec, ff_big_vec, vir_big_vec, pot_big_vec,
-                                nocup_big_vec, cell_big_vec, pars);
-            get_forces_same_hst('s', rr_sml_vec, ff_sml_vec, vir_sml_vec, pot_sml_vec,
-                                nocup_sml_vec, cell_sml_vec, pars);
-            get_forces_diff_hst('b', 's', rr_big_vec, ff_big_vec, rr_sml_vec, vir_big_vec,
-                                pot_big_vec, nocup_sml_vec, cell_sml_vec, pars);
-            get_forces_diff_hst('s', 'b', rr_sml_vec, ff_sml_vec, rr_big_vec, vir_sml_vec,
-                                pot_sml_vec, nocup_big_vec, cell_big_vec, pars);
-# else
-            get_forces_same_dev<<<NB_BIG, NH>>>('b', rr_big_vec, ff_big_vec,
-                                                vir_big_vec, pot_big_vec, nocup_big_vec, cell_big_vec, pars);
-            get_forces_same_dev<<<NB_SML, NH>>>('s', rr_sml_vec, ff_sml_vec,
-                                                vir_sml_vec, pot_sml_vec, nocup_sml_vec, cell_sml_vec, pars);
-            get_forces_diff_dev<<<NB_BIG, NH>>>('b', 's', rr_big_vec, ff_big_vec,
-                                                rr_sml_vec, vir_big_vec, pot_big_vec, nocup_sml_vec, cell_sml_vec,
-                                                pars);
-            get_forces_diff_dev<<<NB_SML, NH>>>('s', 'b', rr_sml_vec, ff_sml_vec,
-                                                rr_big_vec, vir_sml_vec, pot_sml_vec, nocup_big_vec, cell_big_vec,
-                                                pars);
-            cudaDeviceSynchronize();
-# endif
 
-            // processing
+            for (int i = 0; i < number_species; ++i) {
 
-            if (ni < 0 && ni % ngap == 0) {
-                cudaDeviceSynchronize();
+                get_forces_same_hst(grain[i], pars);
 
-                // get nocup_max
-
-                nocup_big_max = nocup_sml_max = 0;
-                for (ii = 0; ii < ncell_big3; ii++) {
-                    nocup = nocup_big_vec[ii];
-                    if (nocup_big_max < nocup) nocup_big_max = nocup;
+                for (int j = 0; j < number_species; ++j) {
+                    if (i == j) continue;
+                    get_forces_diff_hst(grain[i], grain[j], pars);
                 }
-                for (ii = 0; ii < ncell_sml3; ii++) {
-                    nocup = nocup_sml_vec[ii];
-                    if (nocup_sml_max < nocup) nocup_sml_max = nocup;
-                }
-                printf("run ni %d/%d  %.2f%%  --  print %d/%d  --  ocup b s  %d %d\n",
-                       ni, niter, 100.0 * ((float) (ni)) / ((float) niter), counter, nsamples,
-                       nocup_big_max, nocup_sml_max);
-                fflush(stdout);
             }
+
+# else
+            for (int i = 0; i < number_species; ++i) {
+
+                get_forces_same_dev<<<NB[i], NH>>>(grain[i], pars);
+
+                for (int j = 0; j < number_species; ++j) {
+                    if (i == j) continue;
+                    get_forces_diff_dev<<<NB[i], NH>>>(grain[i], grain[j], pars);
+                }
+            }
+            cudaDeviceSynchronize();
+
+# endif
 
             // processing
 #ifdef LOG_SAMPLE
@@ -623,40 +512,24 @@ int main() {
                 cudaDeviceSynchronize();
                 counter++;
 
-                // energy sampling
-                ene_pot_big = ene_pot_sml = 0.0;
-                for (int mm = 0; mm < ngrain_big; mm++) ene_pot_big += 0.5 * pot_big_vec[mm];
-                ene_pot_big /= xngrain_big;
-                for (int mm = 0; mm < ngrain_sml; mm++) ene_pot_sml += 0.5 * pot_sml_vec[mm];
-                ene_pot_sml /= xngrain_sml;
+                printf("run ni %d/%d  %.2f%%  --  print %d/%d  --\n",
+                   ni, niter, 100.0 * ((float) (ni)) / ((float) niter), counter, nsamples);
 
-                energy_us[energy_counter] += ene_pot_sml;
-                energy_ub[energy_counter] += ene_pot_big;
+                // energy sampling
+                for (int i = 0; i < number_species; ++i) {
+                    float potential = 0;
+                    for (int mm = 0; mm < grain[i].number_particles; ++mm)
+                        potential += 0.5f * grain[i].potential[mm];
+
+                    potential /= (float) grain[i].number_particles;
+                    potential_energy[i][energy_counter] = potential;
+                }
+
+                // temperature sampling
                 time_energy[energy_counter] = time;
-                energy_temp[energy_counter] = pars.temp_set;
+                energy_temp[energy_counter] = pars.temperature;
 
                 energy_counter++;
-
-                // occupation
-
-                nocup_big_max = nocup_sml_max = 0;
-                for (ii = 0; ii < ncell_big3; ii++) {
-                    nocup = nocup_big_vec[ii];
-                    if (nocup_big_max < nocup) nocup_big_max = nocup;
-                }
-                for (ii = 0; ii < ncell_sml3; ii++) {
-                    nocup = nocup_sml_vec[ii];
-                    if (nocup_sml_max < nocup) nocup_sml_max = nocup;
-                }
-                printf("run ni %d/%d  %.2f%%  --  print %d/%d  --  ocup b s  %d %d -- temp %.3f\n",
-                       ni, niter, 100.0 * ((float) (ni)) / ((float) niter), counter, nsamples,
-                       nocup_big_max, nocup_sml_max, pars.temp_set);
-                fflush(stdout);
-                if (nocup_big_max >= ntags_big || nocup_sml_max >= ntags_sml) {
-                    printf("ntags reached limit\n");
-                    fflush(stdout);
-                    exit(1);
-                }
 
                 // writing snapshots
 
@@ -714,44 +587,39 @@ int main() {
                 fclose(fp_snaps);
 # endif
 
+                // reset gder before add new statistics
+
+                for (int i = 0; i < number_species; ++i)
+                    for (int j = 0; j < number_species; ++j)
+                        for (int nbin = 0; nbin < NB[i] * nbins_gder; ++nbin)
+                            gr[i][j][nbin] = 0.0f;
+
+
                 //get statistics for gder
-
-                for (int nb = 0; nb < NB_BIG * nbins_gder; nb++) gder_bb_vec[nb] = 0.0f;
-                for (int nb = 0; nb < NB_SML * nbins_gder; nb++) gder_ss_vec[nb] = 0.0f;
-                for (int nb = 0; nb < NB_BIG * nbins_gder; nb++) gder_bs_vec[nb] = 0.0f;
-                for (int nb = 0; nb < NB_SML * nbins_gder; nb++) gder_sb_vec[nb] = 0.0f;
-
 # if HOST
-                get_gder_hst('b', 'b', rr_big_vec, rr_big_vec, gder_bb_vec, pars);
-                get_gder_hst('b', 's', rr_big_vec, rr_sml_vec, gder_bs_vec, pars);
-                get_gder_hst('s', 'b', rr_sml_vec, rr_big_vec, gder_sb_vec, pars);
-                get_gder_hst('s', 's', rr_sml_vec, rr_sml_vec, gder_ss_vec, pars);
-# else
-                get_gder_dev<<<NB_BIG, NH>>>('b', 'b', rr_big_vec, rr_big_vec, gder_bb_vec,
-                                             pars);
-                get_gder_dev<<<NB_BIG, NH>>>('b', 's', rr_big_vec, rr_sml_vec, gder_bs_vec,
-                                             pars);
-                get_gder_dev<<<NB_SML, NH>>>('s', 'b', rr_sml_vec, rr_big_vec, gder_sb_vec,
-                                             pars);
-                get_gder_dev<<<NB_SML, NH>>>('s', 's', rr_sml_vec, rr_sml_vec, gder_ss_vec,
-                                             pars);
 
-                cudaDeviceSynchronize();
+                for (int i = 0; i < number_species; ++i)
+                    for (int j = 0; j < number_species; ++j)
+                        get_gder_hst(i, j, grain[i].rr, grain[j].rr, gr[i][j], pars);
+
+# else
+                // No funciona en device
+                /*for (int i = 0; i < number_species; ++i)
+                    for (int j = 0; j < number_species; ++j)
+                        get_gder_dev<<<NB[i], NH>>>(i, j, grain[i].rr, grain[j].rr, gr[i][j], pars);*/
+
+                for (int i = 0; i < number_species; ++i)
+                    for (int j = 0; j < number_species; ++j)
+                        get_gder_hst(i, j, grain[i].rr, grain[j].rr, gr[i][j], pars);
+
+
 # endif
 
-                for (jj = 0; jj < nbins_gder; jj++) {
-                    for (int nb = 1; nb < NB_BIG; nb++)
-                        gder_bb_vec[jj] += gder_bb_vec[jj + nb * nbins_gder];
-                    for (int nb = 1; nb < NB_SML; nb++)
-                        gder_ss_vec[jj] +=
-                                gder_ss_vec[jj + nb * nbins_gder];
-                    for (int nb = 1; nb < NB_SML; nb++)
-                        gder_sb_vec[jj] +=
-                                gder_sb_vec[jj + nb * nbins_gder];
-                    for (int nb = 1; nb < NB_BIG; nb++)
-                        gder_bs_vec[jj] +=
-                                gder_bs_vec[jj + nb * nbins_gder];
-                }
+                for (int i = 0; i < number_species; ++i)
+                    for (int j = 0; j < number_species; ++j)
+                        for (int nbin = 0; nbin < nbins_gder; ++nbin)
+                            for (int number_block = 0; number_block < NB[i]; ++number_block)
+                                gr[i][j][nbin] += gr[i][j][nbin + number_block * nbins_gder];
 
                 // add to gders arrays to maintain statistics
 
@@ -760,48 +628,41 @@ int main() {
                     exit(EXIT_FAILURE);
                 }
 
-                for (int nb = 0; nb < nbins_gder; nb++) {
-                    gders[counter - 1][0][nb] += gder_bb_vec[nb];
-                    gders[counter - 1][1][nb] += gder_bs_vec[nb];
-                    gders[counter - 1][2][nb] += gder_sb_vec[nb];
-                    gders[counter - 1][3][nb] += gder_ss_vec[nb];
-                }
+                for (int nb = 0; nb < nbins_gder; nb++)
+                    gders[counter - 1][0][nb] += gr[0][0][nb];
+
 
                 // calculate fself
 
-                fself_isotropic(rr_big_raw_vec, rr_big_ini_vec, ngrain_big, fself_big, counter, qmax);
+                fself_isotropic(grain[0].rr_raw, grain[0].rr0, grain[0].number_particles, fself_big, counter, qmax);
 
                 // calculate MSD
 
-                msd_big = 0.0;
-                for (int mm = 0; mm < ngrain_big; mm++) {
-                    drr.x = rr_big_raw_vec[mm].x - rr_big_ini_vec[mm].x;
-                    drr.y = rr_big_raw_vec[mm].y - rr_big_ini_vec[mm].y;
-                    drr.z = rr_big_raw_vec[mm].z - rr_big_ini_vec[mm].z;
-                    msd_big += drr.x * drr.x + drr.y * drr.y + drr.z * drr.z;
-                }
-                msd_big /= xngrain_big;
+                for ( int i = 0; i < number_species; ++i) {
+                    float msd_value = 0.0f;
+                    for (int mm= 0; mm < grain[i].number_particles; ++mm) {
+                        drr.x = grain[i].rr_raw[mm].x - grain[i].rr0[mm].x;
+                        drr.y = grain[i].rr_raw[mm].y - grain[i].rr0[mm].y;
+                        drr.z = grain[i].rr_raw[mm].z - grain[i].rr0[mm].z;
+                        msd_value += drr.x * drr.x + drr.y * drr.y + drr.z * drr.z;
+                    }
+                    msd_value /= (float) grain[i].number_particles;
 
-                msd_sml = 0.0;
-                for (int mm = 0; mm < ngrain_sml; mm++) {
-                    drr.x = rr_sml_raw_vec[mm].x - rr_sml_ini_vec[mm].x;
-                    drr.y = rr_sml_raw_vec[mm].y - rr_sml_ini_vec[mm].y;
-                    drr.z = rr_sml_raw_vec[mm].z - rr_sml_ini_vec[mm].z;
-                    msd_sml += drr.x * drr.x + drr.y * drr.y + drr.z * drr.z;
-                }
-                msd_sml /= xngrain_sml;
+                    msd[i][counter - 1] = msd_value;
 
+
+                }
 
                 time_msd[counter - 1] = time;
-                msd_b[counter - 1] = msd_big;
-                msd_s[counter - 1] = msd_sml;
 
                 // calcula presion
 
                 virial = 0.0;
-                for (int mm = 0; mm < ngrain_big; mm++) virial += vir_big_vec[mm];
-                for (int mm = 0; mm < ngrain_sml; mm++) virial += vir_sml_vec[mm];
-                big_z = 1.0 + virial / (3.0 * xngrain_tot * pars.temp_set); // compressibility 3D
+                for (int i = 0; i < number_species; ++i)
+                    for (int mm = 0; mm < grain[i].number_particles; ++mm)
+                        virial += grain[i].virial[mm];
+
+                big_z = 1.0f + virial / (3.0f * xngrain_tot * pars.temperature); // compressibility 3D
                 pressure[counter - 1] += big_z;
                 time_pressure[counter - 1] = time;
 
@@ -812,22 +673,9 @@ int main() {
                         sprintf(infile, "../configs/decade%d/init_config_%d", number_of_tw, i_config);
                         fp_out = fopen(infile, "w");
 
-                        fprintf(fp_out, "%f %f    phi b, s\n", phi_big, phi_sml);
-                        fprintf(fp_out, "%f    side\n", side);
-                        fprintf(fp_out, "%d %d %d    ngr b, s, tot\n", ngrain_big, ngrain_sml, ngrain_tot);
-                        fprintf(fp_out, "%f %f    sigma b, s\n", sigma_big, sigma_sml);
-                        fprintf(fp_out, "%f %f    mass b, s\n", mass_big, mass_sml);
-                        fprintf(fp_out, "\n");
+                        print_parameters_init_config(fp_out, poly, pars, distribution);
+                        print_particle_properties(fp_out, grain, pars.number_species);
 
-                        for (int mm = 0; mm < ngrain_big; mm++) {
-                            rr = rr_big_vec[mm];
-                            fprintf(fp_out, "%d %f %f %f\n", mm, rr.x, rr.y, rr.z);
-                        }
-                        for (int mm = 0; mm < ngrain_sml; mm++) {
-                            rr = rr_sml_vec[mm];
-                            fprintf(fp_out, "%d %f %f %f\n", (ngrain_big + mm),
-                                    rr.x, rr.y, rr.z);
-                        }
                         fclose(fp_out);
 
                         number_of_tw++;
@@ -845,8 +693,9 @@ int main() {
 
 
     //normaliza gder
+    xngrain_big /= (float) n_configs;
 
-    for (int i = 0; i < nsamples; ++i)
+    for (int counter = 0; counter < nsamples; ++counter)
         for (int nb = 0; nb < nbins_gder; nb++) {
             xnb = (float) nb;
 
@@ -855,30 +704,20 @@ int main() {
 
             sigma = sigma_big;
             vol_free = volume - (4.0 / 3.0) * PI * sigma * sigma * sigma;
-            gders[i][0][nb] = gders[i][0][nb] / (shell_vol);
-            gders[i][0][nb] /= (xngrain_big * (xngrain_big - 1.0) / vol_free);
+            gders[counter][0][nb] = gders[counter][0][nb] / (shell_vol);
+            gders[counter][0][nb] /= (xngrain_big * (xngrain_big - 1.0) / vol_free);
 
-            sigma = 0.5 * (sigma_big + sigma_sml);
-            vol_free = volume - (4.0 / 3.0) * PI * sigma * sigma * sigma;
-            gders[i][1][nb] = gders[i][1][nb] / (shell_vol);
-            gders[i][2][nb] = gders[i][2][nb] / (shell_vol);
-            gders[i][1][nb] /= (xngrain_big * xngrain_sml / vol_free);
-            gders[i][2][nb] /= (xngrain_sml * xngrain_big / vol_free);
-
-            sigma = sigma_sml;
-            vol_free = volume - (4.0 / 3.0) * PI * sigma * sigma * sigma;
-            gders[i][3][nb] = gders[i][3][nb] / (shell_vol);
-            gders[i][3][nb] /= (xngrain_sml * (xngrain_sml - 1.0) / vol_free);
         }
 
     for (int i = 0; i < nsamples; ++i)
-        for (int j = 0; j < 4; ++j)
+        for (int j = 0; j < 1; ++j)
             for (int nb = 0; nb < nbins_gder; ++nb)
                 gders[i][j][nb] /= n_configs;
 
-    for (int i = 0; i < nsamples; ++i) {
-        energy_ub[i] /= n_configs;
-        energy_us[i] /= n_configs;
+    for (int counter = 0; counter < nsamples; ++counter) {
+        for (int j = 0; j < number_species; ++j)
+            potential_energy[j][counter] /= n_configs;
+
     }
 
 
@@ -900,8 +739,7 @@ int main() {
 
         for (int nb = 0; nb < nbins_gder; nb++) {
             dist = (0.5 + (float) nb) * bin_size_gder;
-            fprintf(fp_gder, "%f  %f  %f  %f  %f\n", dist, gders[i][0][nb], gders[i][1][nb],
-                    gders[i][2][nb], gders[i][3][nb]);
+            fprintf(fp_gder, "%f  %f\n", dist, gders[i][0][nb]);
         }
         fclose(fp_gder);
     }
@@ -919,8 +757,7 @@ int main() {
     }
 
     for (int i = 0; i < nsamples; ++i) {
-        fprintf(fp_energ, "%f  %f  %f  %f\n", time_energy[i], energy_ub[i],
-                energy_us[i], energy_temp[i]);
+        fprintf(fp_energ, "%f  %f  %f\n", time_energy[i], potential_energy[0][i], energy_temp[i]);
     }
     fclose(fp_energ);
 
@@ -956,7 +793,7 @@ int main() {
     }
 
     for (int i = 0; i < nsamples; ++i) {
-        fprintf(fp_msd, "%f  %f  %f\n", time_msd[i], msd_b[i], msd_s[i]);
+        fprintf(fp_msd, "%f  %f\n", time_msd[i], msd[0][i]);
     }
     fclose(fp_msd);
 
@@ -988,44 +825,19 @@ int main() {
 
     fclose(fp_bitac);
 
-    cudaFree(rr_big_vec);
-    cudaFree(rr_big_raw_vec);
-    cudaFree(rr_big_ini_vec);
-    cudaFree(ff_big_vec);
-    cudaFree(vir_big_vec);
-    cudaFree(pot_big_vec);
-
-    cudaFree(nocup_big_vec);
-    cudaFree(cell_big_vec);
-
-    cudaFree(rr_sml_vec);
-    cudaFree(rr_sml_raw_vec);
-    cudaFree(rr_sml_ini_vec);
-    cudaFree(ff_sml_vec);
-    cudaFree(vir_sml_vec);
-    cudaFree(pot_sml_vec);
-
-    cudaFree(nocup_sml_vec);
-    cudaFree(cell_sml_vec);
-
-    cudaFree(gder_bb_vec);
-    cudaFree(gder_bs_vec);
-    cudaFree(gder_sb_vec);
-    cudaFree(gder_ss_vec);
-
 
     for (int i = 0; i < nsamples; ++i) {
-        for (int j = 0; j < 4; ++j) free(gders[i][j]);
+        for (int j = 0; j < 1; ++j) free(gders[i][j]);
         free(gders[i]);
     }
     free(gders);
 
     free(fself_big);
+    free(potential_energy);
+    free(msd);
+    free(pressure);
+    free(time_pressure);
 
-    free(energy_us);
-    free(energy_ub);
-    free(msd_b);
-    free(msd_s);
 
     free(energy_temp);
     free(time_energy);

@@ -1,16 +1,14 @@
 # include <cuda.h>
+#include <curand_kernel.h>
 # include <stdlib.h>
 # include <stdio.h>
 # include <math.h>
 # include <vector>
 
 # include <gsl/gsl_blas.h>
-# include <gsl/gsl_vector.h>
-# include <gsl/gsl_matrix.h>
-# include <gsl/gsl_linalg.h>
+# include <gsl/gsl_rng.h>
 # include <gsl/gsl_randist.h>
-# include <curand_kernel.h>
-
+# pragma once
 # define cudaCheckErrors(msg) \
     do { \
         cudaError_t __err = cudaGetLastError(); \
@@ -31,67 +29,93 @@
 # define N_NEIGHS_MAX 15000
 
 
+
+
 typedef struct 
 {
   float *force_ls;
 } 
 return_vectors;
 
-typedef struct 
+
+struct Grains
 {
-  float side;
-  float dt;
-  float mass_big;
-  float mass_sml;
-  float sigma_big;
-  float sigma_sml;
-  float cell_side_big;
-  float cell_side_sml;
-  float temp_set;
-  float bin_size_dplt;
-  float bin_size_gder;
-  float range_dplt;
-  float range_gder;
-  int ngrain_big;
-  int ngrain_sml;
-  int ngrain_tot;
-  int ntags_big;
-  int ntags_sml;
-  int ncell_big;
-  int ncell_med;
-  int ncell_sml;
-  int nrange_bb;
-  int nrange_bs;
-  int nrange_sb;
-  int nrange_ss;
-  int nbins_dplt;
-  int nbins_gder;
-  int nsearch_big;
-  int not_finished;
-  int NH;
-  int WCA_flag;
-  long idum;
-} 
-parametros;
+    int number_particles;
+    float3 *rr;
+    float3 *rr0;        // for msd
+    float3 *rr_raw;     // for msd
+    float3 *vv;
+    float3 *ff;
+    float *diameter;
+    float *mass;
+    float *virial;
+    float *potential;
+};
+
+struct OverlapParameters {
+    float side;
+    float cell_side;
+    float kappa;
+    float gamma;
+    float v0;
+    float overlap_max;
+    float time;
+    float dt;
+    int idum;
+    int ngrain_tot;
+    int ncell;
+    int ntags;
+};
+
+struct SystemParameters {
+
+    int ngrain_total;
+    int number_species;
+    int *N;     //number of particles of each specie
+    float side;
+    float dt;
+    float temperature;
+    float bin_size_dplt;
+    float bin_size_gder;
+    float range_dplt;
+    float range_gder;
+    int nbins_dplt;
+    int nbins_gder;
+    int not_finished;
+    int NH;
+    int WCA_flag;
+    int idum;
+};
+
+struct PolydispersityParameters {
+
+    float *phi;
+    float *diameter;
+    float *polydispersity;
+    float *max_polydispersity;
+
+};
+
+struct cell{
+
+
+};
 
 //====================================================================================
 
 float RAN(long *);
-float Apow_hst(float x);
 
 void set_vec_int_hst(int *, int, int);
 void set_vec_float_hst(float *, int, float);
 void set_vec_float3_hst(float3 *, int, float3);
 
-void cell_locate_hst(char, float3 *, int *, int *, parametros);
+void cell_locate_hst(char, float3 *, int *, int *, SystemParameters);
 
-void update_verlet_init_hst(char, float3 *, float3 *, float3 *, float3 *, parametros);
-void update_verlet_finish_hst(char, float3 *, float3 *, parametros);
+void update_ermak_hst(Grains &grain_vec, SystemParameters pars, gsl_rng *rand);
 
-void get_forces_same_hst(char, float3 *, float3 *, float *, float *, int *, int *, 
-         parametros);
-void get_forces_diff_hst(char, char, float3 *, float3 *, float3 *, float *, float *, 
-         int *, int *, parametros);
+void get_forces_same_hst(Grains &, SystemParameters);
+
+void get_forces_diff_hst(Grains &, Grains &, SystemParameters);
 
 void potential_wca49_50_hst(float sigma, float dist_inv, float invT,float AA,
                             float &potential, float &normal_force);
@@ -101,28 +125,17 @@ void potential_wca49_50_AO_hst(float sigma, float dist_inv, float invT,float AA,
 
 void potential_wca_hst(float sigma, float dist_inv, float &potential, float &normal_force);
 
-void potential_wca_modified_hst(float sigma, float dist_inv, float &potential, float &normal_force);
+void depletion(Grains, SystemParameters, float *);
+int svdcmp(float **, int, int, float *, float **);
 
-void set_temp(float3 *, float3 *, float [], parametros);
+void get_gder_hst(int, int, float3 *, float3 *, float *, SystemParameters);
 
 float calculate_temp_linear(float T0, float Tf, float t0, float tf, float t);
 float calculate_temp_sine(float T0, float Tf, float t0, float tf, float period, float t);
 
-void get_gder_hst(char, char, float3 *, float3 *, float *, parametros);
-
-bool between(const float3 rr1, const float3 rr2, const float3 *rr_sml_vec, parametros pars);
-
-void
-calculate_color(int mm, float3 *rr_big_vec, float3 *rr_sml_vec, char *color, int &blue_count, int &green_count, int &red_count,
-                parametros pars);
-
-void update_ermak_hst(char type, float3 *rr_vec, float3 *rr_raw_vec,
-                      float3 *ff_vec, gsl_rng *rand, parametros pars);
-
 void fself_isotropic(float3 *rr_raw, float3 *rr0, int ngrain, float *fself, int sample_number, float qmax);
 
 // ===================================================================================
-
 __device__ void potential_wca49_50_dev(float sigma, float dist_inv, float invT,float AA,
                                        float &potential, float &normal_force);
 
@@ -131,28 +144,17 @@ __device__ void potential_wca49_50_AO_dev(float sigma, float dist_inv, float inv
 
 __device__ void potential_wca_dev(float sigma, float dist_inv, float &potential, float &normal_force);
 
-__device__ void potential_wca_modified_dev(float sigma, float dist_inv, float &potential, float &normal_force);
-
-__device__ float Apow_dev(float x);
-
 __global__ void set_vec_int_dev(int *, int, int); 
 __global__ void set_vec_float_dev(float *, int, float); 
 __global__ void set_vec_float3_dev(float3 *, int, float3); 
 
-__global__ void cell_locate_dev(char, float3 *, int *, int *, parametros);
-
-__global__ void update_verlet_init_dev(char, float3 *, float3 *, float3 *, float3 *, 
-                    parametros);
-__global__ void update_verlet_finish_dev(char, float3 *, float3 *, parametros);
-
-__global__ void get_forces_same_dev(char, float3 *, float3 *, float *, float *, 
-                    int *, int *, parametros);
-__global__ void get_forces_diff_dev(char, char, float3 *, float3 *, float3 *, 
-                    float *, float *, int *, int *, parametros);
-
-__global__ void get_gder_dev(char, char, float3 *, float3 *, float *, parametros);
+__global__ void cell_locate_dev(char, float3 *, int *, int *, SystemParameters);
 
 __global__ void setup_rng_kernel(curandState *states, unsigned long seed, int N);
+__global__ void update_ermak_dev(Grains &grain_vec, SystemParameters pars, curandState *states);
 
-__global__ void update_ermak_dev(char type, float3 *rr_vec, float3 *rr_raw_vec,
-                                 float3 *ff_vec, curandState *states, parametros pars);
+__global__ void get_forces_same_dev(Grains &, SystemParameters);
+
+__global__ void get_forces_diff_dev(Grains &, Grains &, SystemParameters);
+
+__global__ void get_gder_dev(int, int, const float3 *, const float3 *, float *, SystemParameters);
