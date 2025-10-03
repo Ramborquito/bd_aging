@@ -4,10 +4,14 @@
 
 #set_init_config values
 
-ngrain_total=2048
-phi_big=0.20
-phi_sml=0.00
-size_big=1.0
+distribution="discrete"
+number_species=5
+ngrain=32000
+
+phi=(0.20  0.10  0.02  0.01  0.0025)
+diameter=(1.00  0.50  0.33  0.25  0.20)
+polydispersity=(0.00  0.10  0.10  0.05  0.05)
+max_polydispersity=(0.00  0.50  0.50  0.25  0.25)
 
 #eliminateOverlap values
 kappa=500000
@@ -46,6 +50,28 @@ samples_aging=10
 gr_nbins=400
 gr_range=15.0
 qmax=6.19
+
+# verify parameters for set_init_config
+
+if [ "${#phi[@]}" -ne "$number_species" ]; then
+  echo "Error, number of phi values does not match number of species"
+  exit
+fi
+
+if [ "${#diameter[@]}" -ne "$number_species" ]; then
+  echo "Error, number of diameter values does not match number of species"
+  exit
+fi
+
+if [ "${#polydispersity[@]}" -ne "$number_species" ]; then
+  echo "Error, number of polydispersity values does not match number of species"
+  exit
+fi
+
+if [ "${#max_polydispersity[@]}" -ne "$number_species" ]; then
+  echo "Error, number of max_polydispersity values does not match number of species"
+  exit
+fi
 
 #Crea carpeta para el sistema particular
 
@@ -88,14 +114,37 @@ cp ../bd_aging_configs.bin configs/
 cd configs
 
 # set values in set_init_config.data
+#create set_init_config.data
+idum1=$RANDOM
 {
-  echo "$phi_big  $phi_sml"
-  echo "$ngrain_total"
-  echo "$size_big  1.0"
-  echo "1.0"    # temperature but not used
-  echo "$RANDOM"
-  echo "init_config_overlaped"
-} > set_init_config.data
+echo "$distribution"
+echo "$number_species"
+
+for phi_value in "${phi[@]}"; do
+  echo -n "$phi_value  "
+done
+echo
+
+for diameter_value in "${diameter[@]}"; do
+  echo -n "$diameter_value  "
+done
+echo
+
+for polydispersity_value in "${polydispersity[@]}"; do
+  echo -n "$polydispersity_value  "
+done
+echo
+
+for max_polydispersity_value in "${max_polydispersity[@]}"; do
+  echo -n "$max_polydispersity_value  "
+done
+echo
+
+echo "$ngrain"
+echo "1.0"     #temperature
+echo "$idum1"
+echo "init_config_overlaped"
+} > set_init_config_poly.data
 
 # set values in eliminate_overlap.data
 {

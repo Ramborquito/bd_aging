@@ -20,12 +20,6 @@ void get_forces_same_hst(Grains &grain_vec, SystemParameters pars) {
     float3 rrm, rrn, drr, ff_pair, ffm;
     float cutoff2, side, side_inv, cutoff, virial, potential, sigma, dist_inv, dist2, normal_force;
 
-    //wca_49-50
-//  float invT=0.678575;
-//  float BB=50.0/49.0;
-//  float AA= 50*Apow_dev(BB);
-//  cutoff=BB*sigma;
-
     side = pars.side;
     side_inv = 1.0f / side;
 
@@ -53,7 +47,7 @@ void get_forces_same_hst(Grains &grain_vec, SystemParameters pars) {
             // calculate sigma
 
             sigma = 0.5f * (grain_vec.diameter[mm] + grain_vec.diameter[nn]);
-            cutoff = 1.122462048f * sigma;
+            cutoff = 1.0f * sigma;
             cutoff2 = cutoff * cutoff;
 
             // coordinate differences
@@ -74,7 +68,7 @@ void get_forces_same_hst(Grains &grain_vec, SystemParameters pars) {
             if (dist2 < cutoff2) {
                 dist_inv = sqrt(1.0f / dist2);
                 //potential_wca49_50_dev(sigma,dist_inv,invT,AA,potential,normal_force);
-                potential_wca_hst(sigma, dist_inv, potential, normal_force);
+                potential_wca_modified_hst(sigma, dist_inv, potential, normal_force);
 
                 // calcula las fuerzas normales para este par
 
@@ -111,15 +105,6 @@ get_forces_diff_hst(Grains &grain_vec, Grains &grain_other_vec, SystemParameters
     side = pars.side;
     side_inv = 1.0f / side;
 
-    //wca_49-50
-//  float invT=0.678575;
-//  float BB=50.0/49.0;
-//  float AA= 50*Apow_dev(BB);
-//  cutoff=BB*sigma;
-
-    //wca
-    cutoff = 1.122462048f * sigma;
-
     cutoff2 = cutoff * cutoff;
     side = pars.side;
     side_inv = 1.0f / side;
@@ -148,7 +133,7 @@ get_forces_diff_hst(Grains &grain_vec, Grains &grain_other_vec, SystemParameters
             // calculate sigma
 
             sigma = 0.5f * (grain_vec.diameter[mm] + grain_other_vec.diameter[nn]);
-            cutoff = 1.122462048f * sigma;
+            cutoff = 1.0f * sigma;
             cutoff2 = cutoff * cutoff;
 
             // coordinate differences
@@ -169,7 +154,7 @@ get_forces_diff_hst(Grains &grain_vec, Grains &grain_other_vec, SystemParameters
             if (dist2 < cutoff2) {
                 dist_inv = sqrt(1.0f / dist2);
                 //potential_wca49_50_dev(sigma,dist_inv,invT,AA,potential,normal_force);
-                potential_wca_hst(sigma, dist_inv, potential, normal_force);
+                potential_wca_modified_hst(sigma, dist_inv, potential, normal_force);
 
                 // calcula las fuerzas normales para este par
 
@@ -268,13 +253,13 @@ __global__ void get_forces_same_dev(Grains &grain_vec, SystemParameters pars) {
 
             diameter_nn = grain_vec.diameter[nn];
             sigma = 0.5f * (diameter_mm + diameter_nn);
-            cutoff = 1.122462048f * sigma;
+            cutoff = 1.0f * sigma;
             cutoff2 = cutoff * cutoff;
 
             if (dist2 < cutoff2) {
                 dist_inv = sqrt(1.0f / dist2);
                 //potential_wca49_50_dev(sigma,dist_inv,invT,AA,potential,normal_force);
-                potential_wca_dev(sigma, dist_inv, potential, normal_force);
+                potential_wca_modified_dev(sigma, dist_inv, potential, normal_force);
 
                 // calcula las fuerzas normales para este par
 
@@ -360,13 +345,13 @@ __global__ void get_forces_diff_dev(Grains &grain_vec, Grains &grain_other_vec, 
 
             diameter_nn = grain_other_vec.diameter[nn];
             sigma = 0.5f * (diameter_mm + diameter_nn);
-            cutoff = 1.122462048f * sigma;
+            cutoff = 1.0f * sigma;
             cutoff2 = cutoff * cutoff;
 
             if (dist2 < cutoff2) {
                 dist_inv = sqrt(1.0f / dist2);
                 //potential_wca49_50_dev(sigma,dist_inv,invT,AA,potential,normal_force);
-                potential_wca_dev(sigma, dist_inv, potential, normal_force);
+                potential_wca_modified_dev(sigma, dist_inv, potential, normal_force);
 
                 // calcula las fuerzas normales para este par
 

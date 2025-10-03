@@ -123,7 +123,7 @@ void potential_wca49_50_hst(float sigma, float dist_inv, float invT,float AA,
 void potential_wca49_50_AO_hst(float sigma, float dist_inv, float invT,float AA, float sigma_pol, float phi_pol,
                                float &potential, float &normal_force);
 
-void potential_wca_hst(float sigma, float dist_inv, float &potential, float &normal_force);
+void potential_wca_modified_hst(float sigma, float dist_inv, float &potential, float &normal_force);
 
 void depletion(Grains, SystemParameters, float *);
 int svdcmp(float **, int, int, float *, float **);
@@ -142,7 +142,7 @@ __device__ void potential_wca49_50_dev(float sigma, float dist_inv, float invT,f
 __device__ void potential_wca49_50_AO_dev(float sigma, float dist_inv, float invT,float AA, float sigma_pol, float phi_pol,
                                           float &potential, float &normal_force);
 
-__device__ void potential_wca_dev(float sigma, float dist_inv, float &potential, float &normal_force);
+__device__ void potential_wca_modified_dev(float sigma, float dist_inv, float &potential, float &normal_force);
 
 __global__ void set_vec_int_dev(int *, int, int); 
 __global__ void set_vec_float_dev(float *, int, float); 
