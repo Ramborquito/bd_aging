@@ -9,6 +9,8 @@ en enfriamiento o calentamiento.
 # define GRO_FLAG 0
 # define HOST 0
 
+constexpr float BB = 1.020408163;
+
 //===================================== 2025-03-11 ===================================
 
 std::vector<float> log_sampling(int n) {
@@ -466,13 +468,13 @@ int main() {
                             pot_sml_vec, nocup_big_vec, cell_big_vec, pars);
 # else
         get_forces_same_dev<<<NB_BIG, NH>>>('b', rr_big_vec, ff_big_vec, vir_big_vec,
-                                            pot_big_vec, nocup_big_vec, cell_big_vec, pars);
+                                            pot_big_vec, nocup_big_vec, cell_big_vec, BB, pars);
         get_forces_same_dev<<<NB_SML, NH>>>('s', rr_sml_vec, ff_sml_vec, vir_sml_vec,
-                                            pot_sml_vec, nocup_sml_vec, cell_sml_vec, pars);
+                                            pot_sml_vec, nocup_sml_vec, cell_sml_vec, BB, pars);
         get_forces_diff_dev<<<NB_BIG, NH>>>('b', 's', rr_big_vec, ff_big_vec, rr_sml_vec,
-                                            vir_big_vec, pot_big_vec, nocup_sml_vec, cell_sml_vec, pars);
+                                            vir_big_vec, pot_big_vec, nocup_sml_vec, cell_sml_vec, BB, pars);
         get_forces_diff_dev<<<NB_SML, NH>>>('s', 'b', rr_sml_vec, ff_sml_vec, rr_big_vec,
-                                            vir_sml_vec, pot_sml_vec, nocup_big_vec, cell_big_vec, pars);
+                                            vir_sml_vec, pot_sml_vec, nocup_big_vec, cell_big_vec, BB, pars);
 #endif
 
         // initialize Random Number Generators
@@ -579,14 +581,14 @@ int main() {
                                 pot_sml_vec, nocup_big_vec, cell_big_vec, pars);
 # else
             get_forces_same_dev<<<NB_BIG, NH>>>('b', rr_big_vec, ff_big_vec,
-                                                vir_big_vec, pot_big_vec, nocup_big_vec, cell_big_vec, pars);
+                                                vir_big_vec, pot_big_vec, nocup_big_vec, cell_big_vec, BB, pars);
             get_forces_same_dev<<<NB_SML, NH>>>('s', rr_sml_vec, ff_sml_vec,
-                                                vir_sml_vec, pot_sml_vec, nocup_sml_vec, cell_sml_vec, pars);
+                                                vir_sml_vec, pot_sml_vec, nocup_sml_vec, cell_sml_vec, BB, pars);
             get_forces_diff_dev<<<NB_BIG, NH>>>('b', 's', rr_big_vec, ff_big_vec,
-                                                rr_sml_vec, vir_big_vec, pot_big_vec, nocup_sml_vec, cell_sml_vec,
+                                                rr_sml_vec, vir_big_vec, pot_big_vec, nocup_sml_vec, cell_sml_vec, BB,
                                                 pars);
             get_forces_diff_dev<<<NB_SML, NH>>>('s', 'b', rr_sml_vec, ff_sml_vec,
-                                                rr_big_vec, vir_sml_vec, pot_sml_vec, nocup_big_vec, cell_big_vec,
+                                                rr_big_vec, vir_sml_vec, pot_sml_vec, nocup_big_vec, cell_big_vec, BB,
                                                 pars);
             cudaDeviceSynchronize();
 # endif

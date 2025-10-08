@@ -30,7 +30,6 @@
 # define EPS 1.0f
 # define N_NEIGHS_MAX 15000
 
-
 typedef struct 
 {
   float *force_ls;
@@ -88,12 +87,14 @@ void cell_locate_hst(char, float3 *, int *, int *, parametros);
 void update_verlet_init_hst(char, float3 *, float3 *, float3 *, float3 *, parametros);
 void update_verlet_finish_hst(char, float3 *, float3 *, parametros);
 
-void get_forces_same_hst(char, float3 *, float3 *, float *, float *, int *, int *, 
-         parametros);
-void get_forces_diff_hst(char, char, float3 *, float3 *, float3 *, float *, float *, 
-         int *, int *, parametros);
+void get_forces_same_hst(char type, float3 *rr_vec, float3 *ff_vec, float *vir_vec,
+                         float *pot_vec, int *nocup_vec, int *cell_vec, float BB, parametros pars);
 
-void potential_wca49_50_hst(float sigma, float dist_inv, float invT,float AA,
+void get_forces_diff_hst(char type, char type_other, float3 *rr_vec, float3 *ff_vec,
+                         float3 *rr_other_vec, float *vir_vec, float *pot_vec, int *nocup_other_vec,
+                         int *cell_other_vec, float BB, parametros pars);
+
+void potential_wca49_50_hst(float sigma, float dist_inv,
                             float &potential, float &normal_force);
 
 void potential_wca49_50_AO_hst(float sigma, float dist_inv, float invT,float AA, float sigma_pol, float phi_pol,
@@ -123,7 +124,7 @@ void fself_isotropic(float3 *rr_raw, float3 *rr0, int ngrain, float *fself, int 
 
 // ===================================================================================
 
-__device__ void potential_wca49_50_dev(float sigma, float dist_inv, float invT,float AA,
+__device__ void potential_wca49_50_dev(float sigma, float dist_inv,
                                        float &potential, float &normal_force);
 
 __device__ void potential_wca49_50_AO_dev(float sigma, float dist_inv, float invT,float AA, float sigma_pol, float phi_pol,
@@ -145,10 +146,14 @@ __global__ void update_verlet_init_dev(char, float3 *, float3 *, float3 *, float
                     parametros);
 __global__ void update_verlet_finish_dev(char, float3 *, float3 *, parametros);
 
-__global__ void get_forces_same_dev(char, float3 *, float3 *, float *, float *, 
-                    int *, int *, parametros);
-__global__ void get_forces_diff_dev(char, char, float3 *, float3 *, float3 *, 
-                    float *, float *, int *, int *, parametros);
+__global__ void get_forces_same_dev(char type, float3 *rr_vec, float3 *ff_vec,
+                                    float *vir_vec, float *pot_vec, int *nocup_vec,
+                                    int *cell_vec, float BB, parametros pars);
+
+__global__ void get_forces_diff_dev(char type, char type_other, float3 *rr_vec,
+                                    float3 *ff_vec, float3 *rr_other_vec, float *vir_vec,
+                                    float *pot_vec, int *nocup_other_vec, int *cell_other_vec, float BB,
+                                    parametros pars);
 
 __global__ void get_gder_dev(char, char, float3 *, float3 *, float *, parametros);
 

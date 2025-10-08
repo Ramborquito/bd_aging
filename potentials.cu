@@ -6,9 +6,10 @@
 // HOST
 // ===================================================================================
 
-void potential_wca49_50_hst(float sigma, float dist_inv, float invT,float AA,
+void potential_wca49_50_hst(float sigma, float dist_inv,
                             float &potential, float &normal_force){
-    
+
+    float AA = 137.298635043;
     float sor = dist_inv*sigma;
     float sor6;
     sor6 = sor*sor*sor;
@@ -18,8 +19,8 @@ void potential_wca49_50_hst(float sigma, float dist_inv, float invT,float AA,
     float sor48=sor24*sor24;
     float sor50=sor48*sor*sor;
     
-    potential += EPS*AA*invT*(sor50 - sor48*sor)+EPS*invT;
-    normal_force = -EPS*AA*invT*(50*sor50-49*sor48*sor)*dist_inv;
+    potential += EPS*AA*(sor50 - sor48*sor)+EPS;
+    normal_force = -EPS*AA*(50*sor50-49*sor48*sor)*dist_inv;
 }
 
 // ===================================================================================
@@ -79,19 +80,19 @@ void potential_wca_modified_hst(float sigma, float dist_inv, float &potential, f
 // DEVICE
 // ===================================================================================
 
-__device__ void potential_wca49_50_dev(float sigma, float dist_inv, float invT,float AA,
+__device__ void potential_wca49_50_dev(float sigma, float dist_inv,
                                        float &potential, float &normal_force){
-    
+
+    float AA = 137.298635043;
     float sor = dist_inv*sigma;
-    
     float sor6 = sor*sor*sor*sor*sor*sor;
     float sor12=sor6*sor6;
     float sor24=sor12*sor12;
     float sor48=sor24*sor24;
     float sor50=sor48*sor*sor;
     
-    potential += EPS*AA*invT*(sor50 - sor48*sor)+EPS*invT;
-    normal_force = -EPS*AA*invT*(50*sor50-49*sor48*sor)*dist_inv;
+    potential += EPS*AA*(sor50 - sor48*sor)+EPS;
+    normal_force = -EPS*AA*(50*sor50-49*sor48*sor)*dist_inv;
 }
 
 __device__ void potential_wca49_50_AO_dev(float sigma, float dist_inv, float invT,float AA, float sigma_pol, float phi_pol,
