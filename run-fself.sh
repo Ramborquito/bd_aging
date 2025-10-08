@@ -6,7 +6,7 @@
 
 distribution="discrete"
 number_species=5
-ngrain=32000
+ngrain=1024
 
 phi=(0.20  0.10  0.02  0.01  0.0025)
 diameter=(1.00  0.50  0.33  0.25  0.20)
@@ -14,7 +14,7 @@ polydispersity=(0.00  0.10  0.10  0.05  0.05)
 max_polydispersity=(0.00  0.50  0.50  0.25  0.25)
 
 #eliminateOverlap values
-kappa=500000
+kappa=50000
 gamma=200
 dt_overlap=5.0e-4
 runtime_overlap=4.0
@@ -80,7 +80,7 @@ if [ $# -eq 0 ]; then
 	exit 1
 fi
 
-directorio=bs_${size_big}_phi_${phi_big}_${phi_sml}_temp_${temp0}_${tempf}_${tf}_sample$1
+directorio=ns_${number_species}_${distribution}_temp_${temp0}_${tempf}_${tf}_sample$1
 
 if [ -d "$directorio" ]; then
 	echo "Directorio ya existe, use otro numero"
@@ -95,8 +95,6 @@ cd $directorio
 
 ###################Crea carpetas ###################
 echo "Creating files"
-mkdir configs
-mkdir -p simulation/results
 
 for((i=0; i<=number_initial_decades;i++)); do
   mkdir -p "configs/decade$i"
@@ -106,15 +104,14 @@ for((i=0; i<=number_initial_decades;i++)); do
   mkdir -p "simulation/results/decade$i"
 done
 
-#copy files to configs
-cp ../set_init_config.bin configs/
-cp ../eliminate_overlap.bin configs/
-cp ../bd_aging_configs.bin configs/
-
 cd configs
 
-# set values in set_init_config.data
-#create set_init_config.data
+#copy files to simulation
+cp ../../setConfig.bin .
+cp ../../eliminateOverlap.bin .
+cp ../../bd_aging_configs.bin .
+
+#create setConfig.data
 idum1=$RANDOM
 {
 echo "$distribution"
@@ -144,7 +141,7 @@ echo "$ngrain"
 echo "1.0"     #temperature
 echo "$idum1"
 echo "init_config_overlaped"
-} > set_init_config_poly.data
+} > setConfig.data
 
 # set values in eliminate_overlap.data
 {
@@ -155,7 +152,7 @@ echo "init_config_overlaped"
   echo "$dt_overlap"
   echo "$runtime_overlap"
   echo "1.0 $RANDOM"
-} > eliminate_overlap.data
+} > eliminateOverlap.data
 
 # set values in wca-configs.data
 {
@@ -177,10 +174,10 @@ cd configs
 
 #creating init_config
 echo "Creating initial config"
-./set_init_config.bin < set_init_config.data #> bitacora_set.log
-./eliminate_overlap.bin < eliminate_overlap.data #> bitacora_overlap.log
-rm init_config_overlaped
-rm rcp*
+./setConfig.bin < setConfig.data #> bitacora_set.log
+./eliminateOverlap.bin < eliminateOverlap.data #> bitacora_overlap.log
+#rm init_config_overlaped
+#rm rcp*
 
 #creating all starting configs
 echo "Creating all configs"
